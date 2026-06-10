@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#060608">
+<title>Signalia — Locked</title>
+<style>
+  :root{
+    --bg:#060608; --line:rgba(255,255,255,.10); --line-soft:rgba(255,255,255,.06);
+    --txt:#eceef2; --dim:#9aa1ac; --faint:#666b75;
+    --good:#8be8c0; --bad:#ff8b8b;
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{
+    min-height:100vh;display:flex;align-items:center;justify-content:center;
+    background:var(--bg);color:var(--txt);
+    font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif;
+    overflow:hidden;
+  }
+  body::before{
+    content:"";position:fixed;inset:0;z-index:-2;
+    background:
+      radial-gradient(1100px 600px at 18% -8%, rgba(195,205,222,.13), transparent 60%),
+      radial-gradient(900px 700px at 108% 8%, rgba(140,150,170,.09), transparent 55%),
+      radial-gradient(1000px 800px at 50% 115%, rgba(120,128,145,.08), transparent 60%),
+      linear-gradient(180deg,#08080b 0%,#050507 100%);
+  }
+  body::after{
+    content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;opacity:.05;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  .metal{
+    background:linear-gradient(180deg,#ffffff 0%,#d7dbe2 30%,#8d939e 50%,#c6cbd4 68%,#f4f6f9 100%);
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+  }
+  .lockCard{
+    width:min(360px,92vw);padding:36px 30px 30px;border-radius:22px;text-align:center;
+    border:1px solid var(--line);
+    background:linear-gradient(160deg,rgba(255,255,255,.075),rgba(255,255,255,.022) 55%,rgba(255,255,255,.045));
+    -webkit-backdrop-filter:blur(22px) saturate(150%);backdrop-filter:blur(22px) saturate(150%);
+    box-shadow:0 18px 60px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.13);
+  }
+  .lockCard.shake{animation:shake .45s ease}
+  @keyframes shake{
+    20%{transform:translateX(-9px)}40%{transform:translateX(8px)}
+    60%{transform:translateX(-6px)}80%{transform:translateX(4px)}
+  }
+  h1{font-size:24px;font-weight:800;letter-spacing:.24em;margin-bottom:4px}
+  .sub{font-size:10.5px;letter-spacing:.22em;text-transform:uppercase;color:var(--faint);margin-bottom:26px}
+  .padlock{width:34px;height:34px;margin:0 auto 18px;display:block;opacity:.85}
+
+  .dots{display:flex;justify-content:center;gap:16px;margin-bottom:10px;height:16px}
+  .dot{
+    width:13px;height:13px;border-radius:50%;
+    border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.05);
+    transition:background .15s,box-shadow .15s,border-color .15s;
+  }
+  .dot.fill{background:#eef1f6;border-color:#fff;box-shadow:0 0 10px rgba(235,240,250,.8)}
+  .dots.ok .dot{background:var(--good);border-color:var(--good);box-shadow:0 0 12px rgba(139,232,192,.9)}
+  .dots.err .dot{background:var(--bad);border-color:var(--bad);box-shadow:0 0 10px rgba(255,139,139,.8)}
+  .msg{min-height:18px;font-size:11.5px;color:var(--faint);font-family:var(--mono);margin-bottom:18px}
+  .msg.warn{color:var(--bad)}
+
+  .pad{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;justify-items:center}
+  .key{
+    width:72px;height:72px;border-radius:50%;cursor:pointer;user-select:none;
+    font:600 24px/1 var(--mono);color:var(--txt);
+    border:1px solid rgba(255,255,255,.14);
+    background:linear-gradient(180deg,rgba(255,255,255,.10),rgba(255,255,255,.03));
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.16),0 6px 18px rgba(0,0,0,.4);
+    transition:transform .08s ease,background .15s,border-color .15s;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .key:hover{background:linear-gradient(180deg,rgba(255,255,255,.17),rgba(255,255,255,.06));border-color:rgba(255,255,255,.3)}
+  .key:active{transform:scale(.93)}
+  .key.ghost{visibility:hidden}
+  .key.fn{font-size:18px;color:var(--dim)}
+  .pad.locked .key{opacity:.35;pointer-events:none}
+  .hint{margin-top:24px;font-size:10.5px;color:var(--faint);letter-spacing:.06em}
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+  <div class="lockCard" id="card">
+    <svg class="padlock" viewBox="0 0 24 24" fill="none" stroke="url(#mg)" stroke-width="1.6" stroke-linecap="round">
+      <defs><linearGradient id="mg" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#f4f6f9"/><stop offset="55%" stop-color="#8d939e"/><stop offset="100%" stop-color="#d7dbe2"/>
+      </linearGradient></defs>
+      <rect x="5" y="11" width="14" height="9" rx="2.2"/>
+      <path id="shackle" d="M8 11 V8 a4 4 0 0 1 8 0 v3"/>
+      <circle cx="12" cy="15.5" r="1.4" fill="url(#mg)" stroke="none"/>
+    </svg>
+    <h1 class="metal">SIGNALIA</h1>
+    <div class="sub">deployment ladder — locked</div>
+    <div class="dots" id="dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+    <div class="msg" id="msg">enter your 4-digit PIN</div>
+    <div class="pad" id="pad">
+      <button class="key" data-k="1">1</button><button class="key" data-k="2">2</button><button class="key" data-k="3">3</button>
+      <button class="key" data-k="4">4</button><button class="key" data-k="5">5</button><button class="key" data-k="6">6</button>
+      <button class="key" data-k="7">7</button><button class="key" data-k="8">8</button><button class="key" data-k="9">9</button>
+      <button class="key ghost" tabindex="-1"></button><button class="key" data-k="0">0</button><button class="key fn" data-k="del">⌫</button>
+    </div>
+    <div class="hint">keyboard works too · session lasts 30 days · wrong tries are rate-limited</div>
+  </div>
+
+<script>
+const dots=[...document.querySelectorAll(".dot")];
+const dotsWrap=document.getElementById("dots");
+const msg=document.getElementById("msg");
+const card=document.getElementById("card");
+const pad=document.getElementById("pad");
+let pin="", busy=false, lockTimer=null;
+
+function paint(){dots.forEach((d,i)=>d.classList.toggle("fill",i<pin.length));}
+function setMsg(t,warn){msg.textContent=t;msg.classList.toggle("warn",!!warn);}
+
+function lockout(sec){
+  pad.classList.add("locked");
+  clearInterval(lockTimer);
+  let left=sec;
+  const tick=()=>{
+    if(left<=0){clearInterval(lockTimer);pad.classList.remove("locked");setMsg("enter your 4-digit PIN");return;}
+    setMsg(`too many tries — locked for ${Math.floor(left/60)}:${String(left%60).padStart(2,"0")}`,true);
+    left--;
+  };
+  tick();lockTimer=setInterval(tick,1000);
+}
+
+async function submit(){
+  busy=true;
+  try{
+    const r=await fetch("/unlock",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({pin})});
+    const d=await r.json().catch(()=>({}));
+    if(r.ok&&d.ok){
+      dotsWrap.classList.add("ok");
+      setMsg("unlocked");
+      document.getElementById("shackle").setAttribute("d","M8 11 V8 a4 4 0 0 1 8 0");  /* shackle pops open */
+      setTimeout(()=>location.reload(),450);
+      return;
+    }
+    dotsWrap.classList.add("err");card.classList.add("shake");
+    if(r.status===429&&d.retry_sec){lockout(d.retry_sec);}
+    else setMsg(d.remaining!=null?`wrong PIN — ${d.remaining} tries left`:"wrong PIN",true);
+    setTimeout(()=>{dotsWrap.classList.remove("err");card.classList.remove("shake");pin="";paint();busy=false;},480);
+    return;
+  }catch(e){
+    setMsg("network error — try again",true);
+  }
+  pin="";paint();busy=false;
+}
+
+function press(k){
+  if(busy||pad.classList.contains("locked"))return;
+  if(k==="del"){pin=pin.slice(0,-1);paint();return;}
+  if(!/^[0-9]$/.test(k)||pin.length>=4)return;
+  pin+=k;paint();
+  if(pin.length===4)submit();
+}
+pad.addEventListener("click",e=>{const b=e.target.closest(".key");if(b&&b.dataset.k)press(b.dataset.k);});
+document.addEventListener("keydown",e=>{
+  if(e.key>="0"&&e.key<="9")press(e.key);
+  else if(e.key==="Backspace")press("del");
+});
+</script>
+</body>
+</html>

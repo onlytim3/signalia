@@ -1,0 +1,44 @@
+# Signalia — Render blueprint. Push the repo, then Render -> New -> Blueprint.
+# ONE worker is mandatory (the scheduler + websocket monitors live in-process);
+# gthread gives the dashboard concurrency while the engine runs.
+services:
+  - type: web
+    name: signalia
+    runtime: python
+    plan: starter                      # persistent disks need a paid plan
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn -w 1 -k gthread --threads 8 app:app
+    healthCheckPath: /health
+    disk:
+      name: signalia-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.4
+      - key: DB_FILE
+        value: /data/ladder.db
+      - key: STATE_FILE
+        value: /data/state.json
+      - key: DASH_PIN
+        sync: false                    # pick your 4-digit PIN — the dashboard lock screen
+      - key: SECRET_KEY
+        generateValue: true            # signs the unlock session cookie (survives restarts)
+      - key: DASH_TOKEN
+        generateValue: true            # machine door for curl/automation (?key=...); PIN is the human door
+      - key: MACRO_REGIME
+        value: HOSTILE                 # update after each FOMC/CPI
+      - key: TELEGRAM_TOKEN
+        sync: false                    # set in the Render dashboard (secret)
+      - key: TELEGRAM_CHAT_ID
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: EMAIL_TO
+        sync: false

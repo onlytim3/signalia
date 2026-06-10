@@ -1,0 +1,1151 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#060608">
+<title>Signalia — Deployment Ladder</title>
+<style>
+  /* ============================ FOUNDATION ============================ */
+  :root{
+    --bg:#060608;
+    --panel:rgba(255,255,255,.045);
+    --panel-2:rgba(255,255,255,.08);
+    --line:rgba(255,255,255,.10);
+    --line-soft:rgba(255,255,255,.06);
+    --txt:#eceef2;
+    --dim:#9aa1ac;
+    --faint:#666b75;
+    --good:#8be8c0;
+    --bad:#ff8b8b;
+    --warn:#e9c887;
+    --radius:18px;
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    min-height:100vh;
+    background:var(--bg);
+    color:var(--txt);
+    font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif;
+    overflow-x:hidden;
+  }
+  /* layered metal atmosphere */
+  body::before{
+    content:"";position:fixed;inset:0;z-index:-2;
+    background:
+      radial-gradient(1100px 600px at 18% -8%, rgba(195,205,222,.13), transparent 60%),
+      radial-gradient(900px 700px at 108% 8%, rgba(140,150,170,.09), transparent 55%),
+      radial-gradient(1000px 800px at 50% 115%, rgba(120,128,145,.08), transparent 60%),
+      linear-gradient(180deg,#08080b 0%,#050507 100%);
+  }
+  body::after{ /* film grain — brushed metal texture */
+    content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;opacity:.05;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  ::selection{background:rgba(220,228,240,.25)}
+  a{color:inherit}
+
+  .metal{
+    background:linear-gradient(180deg,#ffffff 0%,#d7dbe2 30%,#8d939e 50%,#c6cbd4 68%,#f4f6f9 100%);
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+  }
+  .num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+  /* ============================ HEADER ============================ */
+  header{
+    position:sticky;top:0;z-index:50;
+    display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+    padding:14px clamp(14px,3vw,28px);
+    background:rgba(8,8,11,.62);
+    -webkit-backdrop-filter:blur(18px) saturate(150%);
+    backdrop-filter:blur(18px) saturate(150%);
+    border-bottom:1px solid var(--line-soft);
+  }
+  header::after{ /* chrome hairline */
+    content:"";position:absolute;left:0;right:0;bottom:-1px;height:1px;
+    background:linear-gradient(90deg,transparent,rgba(255,255,255,.35),transparent);
+    opacity:.35;
+  }
+  .brand{display:flex;align-items:baseline;gap:10px;margin-right:auto}
+  .brand h1{font-size:clamp(19px,2.4vw,24px);font-weight:800;letter-spacing:.22em}
+  .brand small{color:var(--faint);font-size:11px;letter-spacing:.14em;text-transform:uppercase}
+  .pills{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .pill{
+    display:inline-flex;align-items:center;gap:7px;
+    font-size:11.5px;letter-spacing:.06em;color:var(--dim);
+    padding:6px 11px;border-radius:999px;
+    border:1px solid var(--line);background:var(--panel);
+    -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
+    white-space:nowrap;
+  }
+  .dot{width:7px;height:7px;border-radius:50%;background:#888;flex:none}
+  .dot.on {background:var(--good);box-shadow:0 0 8px rgba(139,232,192,.8)}
+  .dot.off{background:var(--bad); box-shadow:0 0 8px rgba(255,139,139,.7)}
+  .dot.mid{background:var(--warn);box-shadow:0 0 8px rgba(233,200,135,.7)}
+  .actions{display:flex;gap:8px}
+  button{
+    font:600 12.5px/1 inherit;letter-spacing:.08em;color:var(--txt);
+    padding:10px 16px;border-radius:12px;cursor:pointer;
+    border:1px solid rgba(255,255,255,.16);
+    background:linear-gradient(180deg,rgba(255,255,255,.12),rgba(255,255,255,.04));
+    -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 4px 14px rgba(0,0,0,.35);
+    transition:transform .12s ease,background .2s,border-color .2s;
+    touch-action:manipulation;
+  }
+  button:hover{background:linear-gradient(180deg,rgba(255,255,255,.18),rgba(255,255,255,.06));border-color:rgba(255,255,255,.28)}
+  button:active{transform:translateY(1px) scale(.985)}
+  button:disabled{opacity:.45;cursor:wait}
+  button.busy::after{content:"";display:inline-block;width:10px;height:10px;margin-left:8px;vertical-align:-1px;
+    border:2px solid rgba(255,255,255,.25);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  /* ============================ GRID / CARDS ============================ */
+  main{
+    display:grid;gap:16px;
+    grid-template-columns:repeat(12,1fr);
+    padding:clamp(14px,3vw,26px);
+    max-width:1480px;margin:0 auto;
+    padding-bottom:calc(28px + env(safe-area-inset-bottom));
+  }
+  .card{
+    position:relative;
+    border-radius:var(--radius);
+    border:1px solid var(--line);
+    background:linear-gradient(160deg,rgba(255,255,255,.075),rgba(255,255,255,.022) 55%,rgba(255,255,255,.045));
+    -webkit-backdrop-filter:blur(20px) saturate(150%);
+    backdrop-filter:blur(20px) saturate(150%);
+    box-shadow:0 14px 44px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.13);
+    padding:18px 20px;
+    min-width:0;
+  }
+  .card::before{ /* top sheen */
+    content:"";position:absolute;inset:0 0 auto 0;height:46%;
+    border-radius:var(--radius) var(--radius) 60% 60%/var(--radius) var(--radius) 100% 100%;
+    background:linear-gradient(180deg,rgba(255,255,255,.07),transparent);
+    pointer-events:none;
+  }
+  .card h2{
+    font-size:11px;font-weight:700;letter-spacing:.22em;text-transform:uppercase;
+    color:var(--dim);margin-bottom:14px;display:flex;align-items:center;gap:8px;
+  }
+  .card h2 .tag{margin-left:auto;font-size:10px;letter-spacing:.08em;color:var(--faint);
+    border:1px solid var(--line-soft);padding:3px 8px;border-radius:999px;text-transform:none}
+  .info{
+    width:17px;height:17px;border-radius:50%;padding:0;flex:none;
+    font:600 11px/15px var(--mono);letter-spacing:0;text-transform:none;
+    color:var(--dim);border:1px solid var(--line);background:rgba(255,255,255,.05);
+    box-shadow:none;cursor:pointer;
+  }
+  .info:hover{color:var(--txt);border-color:rgba(255,255,255,.4);background:rgba(255,255,255,.12)}
+  .info[aria-expanded="true"]{background:#dfe3ea;color:#15161a;border-color:#fff}
+  .infoBox{
+    margin:-4px 0 14px;padding:10px 13px;border-radius:10px;
+    font-size:12px;line-height:1.6;color:var(--dim);
+    background:rgba(255,255,255,.045);border:1px solid var(--line-soft);
+    border-left:2px solid rgba(255,255,255,.4);
+    animation:infoIn .22s ease;
+  }
+  .infoBox b{color:var(--txt);font-weight:650}
+  @keyframes infoIn{from{opacity:0;transform:translateY(-3px)}}
+
+  .s12{grid-column:span 12}.s7{grid-column:span 7}.s5{grid-column:span 5}.s4{grid-column:span 4}.s6{grid-column:span 6}.s8{grid-column:span 8}
+
+  /* ============================ GAUGE (hero) ============================ */
+  .gaugeWrap{position:relative;display:flex;justify-content:center}
+  .gauge{width:min(330px,86%);height:auto;display:block}
+  .gaugeCenter{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding-top:8%}
+  .gaugeCenter .big{font-size:clamp(44px,6.2vw,62px);font-weight:800;line-height:1}
+  .gaugeCenter .lbl{font-size:10.5px;letter-spacing:.3em;color:var(--faint);text-transform:uppercase;margin-top:6px}
+  .heroFoot{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:6px;flex-wrap:wrap}
+  .chip{
+    display:inline-flex;align-items:center;gap:8px;font-weight:700;font-size:13px;letter-spacing:.08em;
+    padding:8px 14px;border-radius:12px;border:1px solid var(--line);
+    background:linear-gradient(180deg,rgba(255,255,255,.10),rgba(255,255,255,.03));
+  }
+  .chip.add {color:var(--good)} .chip.trim{color:var(--bad)} .chip.hold{color:var(--dim)}
+  .heroMeta{text-align:right;font-size:12px;color:var(--dim)}
+  .heroMeta b{color:var(--txt);font-weight:650}
+
+  /* ============================ GATE RAIL ============================ */
+  .rail{position:relative;height:64px;margin:44px 6px 8px}
+  .rail .track{position:absolute;left:0;right:0;top:26px;height:12px;border-radius:8px;
+    background:linear-gradient(90deg,rgba(255,255,255,.05),rgba(255,255,255,.10));
+    border:1px solid var(--line-soft);box-shadow:inset 0 2px 6px rgba(0,0,0,.5)}
+  .rail .fill{position:absolute;left:0;top:26px;height:12px;border-radius:8px;width:0%;
+    background:linear-gradient(90deg,#aeb6c2,#f2f5f9);
+    box-shadow:0 0 16px rgba(220,230,245,.35), inset 0 1px 0 rgba(255,255,255,.7);
+    transition:width .8s cubic-bezier(.2,.8,.2,1)}
+  .gate{position:absolute;top:14px;width:2px;height:36px;border-radius:2px;background:rgba(255,255,255,.5);transform:translateX(-1px)}
+  .gate i{position:absolute;top:-15px;left:50%;transform:translateX(-50%);
+    font-style:normal;font-size:9.5px;letter-spacing:.1em;color:var(--faint);white-space:nowrap;text-transform:uppercase}
+  .gate b{position:absolute;bottom:-16px;left:50%;transform:translateX(-50%);
+    font-size:10.5px;color:var(--dim);font-family:var(--mono)}
+  .gate.bind{background:#fff;box-shadow:0 0 12px rgba(255,255,255,.9)}
+  .gate.bind i{color:var(--txt)}
+  .bindNote{margin-top:26px;font-size:12px;color:var(--dim)}
+  .bindNote b{color:var(--txt)}
+  .formula{margin-top:10px;font-size:11.5px;color:var(--faint);font-family:var(--mono)}
+  .refRow{display:flex;gap:6px;flex-wrap:wrap;margin-top:14px}
+  .ref{font-size:10.5px;color:var(--faint);border:1px solid var(--line-soft);border-radius:8px;padding:4px 9px;font-family:var(--mono)}
+  .ref.hot{color:var(--txt);border-color:rgba(255,255,255,.25);background:rgba(255,255,255,.06)}
+
+  /* ============================ METERS / ROWS ============================ */
+  .meter{height:9px;border-radius:6px;background:rgba(255,255,255,.06);
+    border:1px solid var(--line-soft);overflow:hidden;box-shadow:inset 0 2px 5px rgba(0,0,0,.45)}
+  .meter>span{display:block;height:100%;width:0%;border-radius:6px;
+    background:linear-gradient(90deg,#8d95a2,#e8ecf2);transition:width .7s ease}
+  .scoreHead{display:flex;align-items:baseline;gap:10px;margin-bottom:8px}
+  .scoreHead .val{font-size:30px;font-weight:800}
+  .scoreHead .sub{color:var(--faint);font-size:11.5px}
+  .rows{margin-top:14px;display:flex;flex-direction:column}
+  .row{display:flex;align-items:center;gap:10px;padding:9px 2px;border-top:1px solid var(--line-soft);font-size:13px}
+  .row:first-child{border-top:0}
+  .row .k{color:var(--dim);flex:1;min-width:0}
+  .row .v{font-family:var(--mono);font-size:12.5px}
+  .up{color:var(--good)} .dn{color:var(--bad)} .mu{color:var(--dim)}
+
+  /* confirmations */
+  .led{width:10px;height:10px;border-radius:50%;flex:none;background:#3a3d44;border:1px solid rgba(255,255,255,.15)}
+  .led.on{background:var(--good);box-shadow:0 0 10px rgba(139,232,192,.9),inset 0 1px 1px rgba(255,255,255,.6)}
+  .confirmRow{display:flex;align-items:center;gap:12px;padding:12px 2px;border-top:1px solid var(--line-soft)}
+  .confirmRow:first-of-type{border-top:0}
+  .confirmRow .t{flex:1;min-width:0}
+  .confirmRow .t b{display:block;font-size:13.5px;font-weight:650}
+  .confirmRow .t span{display:block;font-size:11.5px;color:var(--faint);font-family:var(--mono)}
+  .capLine{margin-top:12px;padding-top:12px;border-top:1px solid var(--line-soft);font-size:12px;color:var(--dim)}
+  .capLine b{color:var(--txt);font-family:var(--mono)}
+
+  /* sizing */
+  .dual{display:flex;flex-direction:column;gap:10px;margin:8px 0 4px}
+  .dual .lane{display:flex;align-items:center;gap:10px;font-size:11.5px;color:var(--faint)}
+  .dual .lane .meter{flex:1}
+  .dual .lane .nv{width:44px;text-align:right;font-family:var(--mono);color:var(--txt);font-size:12px}
+  .deployForm{display:flex;gap:8px;margin-top:14px}
+  .deployForm input{
+    flex:1;min-width:0;font:600 13px var(--mono);color:var(--txt);
+    background:rgba(0,0,0,.35);border:1px solid var(--line);border-radius:10px;padding:10px 12px;outline:none;
+  }
+  .deployForm input:focus{border-color:rgba(255,255,255,.35)}
+  .splitRow{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px}
+
+  /* scorecard */
+  .scGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px 28px}
+  .scCol .h{font-size:10px;letter-spacing:.16em;color:var(--faint);margin-bottom:4px;
+    display:flex;justify-content:space-between;gap:8px}
+  .scCol .h b{font-family:var(--mono);letter-spacing:0;color:var(--dim);font-weight:600}
+  .scRow{display:flex;gap:10px;align-items:baseline;padding:7px 0;
+    border-top:1px solid var(--line-soft);font-size:12px}
+  .scRow .lbl{flex:1;color:var(--dim);min-width:0}
+  .scRow .lbl .mu{font-size:10px}
+  .scRow.lowN{opacity:.45}
+  @media (max-width:760px){.scGrid{grid-template-columns:1fr}}
+
+  /* sparklines */
+  .sparkGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px 24px}
+  .spark{border-top:0;padding-top:0}
+  .spark:nth-child(n+5){border-top:1px solid var(--line-soft);padding-top:10px}
+
+  /* whale flow panel */
+  .whGrid{display:grid;grid-template-columns:1fr 1.1fr;gap:8px 28px}
+  .tierRow{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line-soft)}
+  .tierRow .tl{font-size:10px;letter-spacing:.16em;color:var(--faint);width:52px;flex:none}
+  .tierRow .tv{font-family:var(--mono);font-size:11px;color:var(--dim);white-space:nowrap}
+  .splitBar{flex:1;min-width:60px;height:13px;border-radius:7px;overflow:hidden;position:relative;
+    background:rgba(255,139,139,.22);border:1px solid var(--line-soft)}
+  .splitBar>span{display:block;height:100%;background:linear-gradient(180deg,rgba(160,240,200,.75),rgba(110,200,160,.6));
+    transition:width .6s ease}
+  .splitBar::after{content:"";position:absolute;left:50%;top:0;bottom:0;width:1px;background:rgba(255,255,255,.35)}
+  .dirHead{font-size:10px;letter-spacing:.14em;color:var(--faint);margin-bottom:6px;display:flex;justify-content:space-between}
+  .dirHead b{font-family:var(--mono);color:var(--dim);letter-spacing:0}
+  #whBins{width:100%;height:46px;display:block;margin-bottom:8px}
+  .spark .head{display:flex;justify-content:space-between;font-size:11px;color:var(--faint);letter-spacing:.08em;margin-bottom:4px}
+  .spark .head b{color:var(--txt);font-family:var(--mono)}
+  .spark svg{width:100%;height:46px;display:block}
+
+  /* scanner */
+  .seg{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+  .seg button{padding:7px 12px;font-size:11px;border-radius:9px;letter-spacing:.06em}
+  .seg button.sel{background:linear-gradient(180deg,#e8ebf0,#b9bfc9);color:#15161a;border-color:#fff}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--faint);text-align:right;padding:7px 8px;border-bottom:1px solid var(--line-soft);font-weight:600}
+  td{padding:8px;border-bottom:1px solid var(--line-soft);text-align:right;font-family:var(--mono);white-space:nowrap}
+  th:first-child,td:first-child{text-align:left}
+  td:first-child{font-weight:700;font-family:inherit;letter-spacing:.04em}
+  tr:last-child td{border-bottom:0}
+  .tblWrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .breadthLine{display:flex;align-items:center;gap:12px;margin-bottom:14px;font-size:12px;color:var(--dim)}
+  .breadthLine .meter{flex:1}
+  .flag{font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--warn);
+    border:1px solid rgba(233,200,135,.35);border-radius:6px;padding:2px 6px;margin-left:6px;vertical-align:1px}
+
+  /* watchlist */
+  .wlRow{display:grid;grid-template-columns:1fr auto auto;gap:5px 10px;
+    padding:12px 2px;border-top:1px solid var(--line-soft);align-items:center}
+  .wlDel{width:20px;height:20px;padding:0;border-radius:6px;flex:none;
+    font:600 11px/1 var(--mono);color:var(--faint);
+    background:rgba(255,255,255,.04);border:1px solid var(--line-soft);box-shadow:none}
+  .wlDel:hover{color:var(--bad);border-color:rgba(255,139,139,.45);background:rgba(255,139,139,.08)}
+  .wlRow:first-child{border-top:0}
+  .wlRow .sym{font-weight:750;letter-spacing:.04em;font-size:13.5px}
+  .wlRow .px{font-family:var(--mono);font-size:13px;color:var(--txt);text-align:right}
+  .wlRow .sub{grid-column:1/-1;display:flex;align-items:center;gap:10px;font-size:11px;color:var(--faint);font-family:var(--mono);flex-wrap:wrap}
+  .miniMeter{flex:1;min-width:70px;height:5px;border-radius:4px;background:rgba(255,255,255,.06);overflow:hidden}
+  .miniMeter>span{display:block;height:100%;background:linear-gradient(90deg,#99a1ad,#eef1f6)}
+  .wlStats{font-family:var(--mono);font-size:11.5px;color:var(--dim);text-align:right}
+
+  footer{max-width:1480px;margin:0 auto;padding:0 clamp(14px,3vw,26px) 30px;
+    font-size:11px;color:var(--faint);display:flex;gap:14px;flex-wrap:wrap}
+  footer span{font-family:var(--mono)}
+
+  /* toast */
+  #toast{position:fixed;left:50%;bottom:calc(22px + env(safe-area-inset-bottom));transform:translateX(-50%) translateY(80px);
+    background:rgba(20,21,26,.92);border:1px solid var(--line);border-radius:12px;padding:11px 18px;
+    font-size:13px;z-index:99;transition:transform .3s ease;max-width:88vw;
+    -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);box-shadow:0 10px 30px rgba(0,0,0,.6)}
+  #toast.show{transform:translateX(-50%) translateY(0)}
+
+  /* scrollbars */
+  *{scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.18) transparent}
+  ::-webkit-scrollbar{height:8px;width:8px}
+  ::-webkit-scrollbar-thumb{background:rgba(255,255,255,.16);border-radius:8px}
+  ::-webkit-scrollbar-track{background:transparent}
+
+  /* ============================ RESPONSIVE ============================ */
+  @media (max-width:1080px){
+    .s7,.s5,.s4{grid-column:span 6}
+    .s8{grid-column:span 12}
+  }
+  .readStrip{padding:13px 20px;display:flex;gap:14px;align-items:baseline}
+  .readStrip .lbl{font-size:10px;font-weight:700;letter-spacing:.22em;color:var(--faint);flex:none}
+  .readStrip .txt{font-size:13.5px;line-height:1.55;color:var(--dim)}
+  .readStrip .txt b{color:var(--txt)}
+  @media (max-width:760px){
+    main{gap:12px}
+    .card{padding:16px}
+    .s7,.s5,.s4,.s6{grid-column:span 12}
+    header{gap:10px;padding:12px 14px}
+    .brand small{display:none}
+    .pills{order:3;width:100%;overflow-x:auto;flex-wrap:nowrap;padding-bottom:2px}
+    .heroMeta{text-align:left}
+    .gauge{width:min(290px,92%)}
+    .sparkGrid{grid-template-columns:1fr}
+    .spark:nth-child(n+2){border-top:1px solid var(--line-soft);padding-top:10px}
+    .whGrid{grid-template-columns:1fr}
+  }
+  @media (min-width:761px) and (max-width:1080px){
+    .sparkGrid{grid-template-columns:1fr 1fr}
+    .spark:nth-child(n+3){border-top:1px solid var(--line-soft);padding-top:10px}
+  }
+  @media (prefers-reduced-motion:reduce){
+    *,*::before,*::after{animation:none!important;transition:none!important}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <h1 class="metal">SIGNALIA</h1>
+    <small>deployment ladder</small>
+  </div>
+  <div class="pills">
+    <span class="pill"><span class="dot mid" id="regimeDot"></span>REGIME <b id="regimePill" class="num" style="color:var(--txt)">—</b></span>
+    <span class="pill"><span class="dot" id="wsDot"></span>LIQ STREAM <b id="wsPill" style="color:var(--txt)">—</b></span>
+    <span class="pill"><span class="dot" id="staleDot"></span><b id="stalePill" style="color:var(--txt)">—</b></span>
+    <span class="pill" id="degPill" style="display:none"><span class="dot mid"></span>DEGRADED <b id="degList" style="color:var(--warn)">—</b></span>
+    <span class="pill" id="modePill">MODE —</span>
+    <span class="pill num" id="clockPill">updated —</span>
+  </div>
+  <div class="actions">
+    <button id="btnRun">⟳ RUN</button>
+    <button id="btnScan">⌖ SCAN</button>
+    <button id="btnLock" title="lock the dashboard" style="display:none">🔒</button>
+  </div>
+</header>
+
+<main>
+
+  <!-- ================= THE READ (plain-english one-breath) ================= -->
+  <section class="card s12 readStrip" id="readCard" style="display:none">
+    <span class="lbl metal">THE READ</span>
+    <span class="txt" id="plainRead">—</span>
+  </section>
+
+  <!-- ================= HERO: GAUGE ================= -->
+  <section class="card s5">
+    <h2>Deployment Target <button class="info" aria-label="What is this?" aria-expanded="false">i</button> <span class="tag" id="gaugeMode">—</span></h2>
+    <p class="infoBox" hidden>The one number this whole system exists to produce: <b>what % of your dry powder should be in the market right now</b>. It's the lowest of the three gates — desire, macro, confirmations — so any single gate can hold you back, and that's the point. The chip below says whether to ADD, TRIM, or sit still versus what you've told it you hold.</p>
+    <div class="gaugeWrap">
+      <svg class="gauge" viewBox="0 0 220 142" id="gaugeSvg" aria-label="deployment target gauge">
+        <defs>
+          <linearGradient id="valGrad" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%"  stop-color="#7e8694"/>
+            <stop offset="55%" stop-color="#cfd5de"/>
+            <stop offset="100%" stop-color="#ffffff"/>
+          </linearGradient>
+          <linearGradient id="trackGrad" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="rgba(255,255,255,.14)"/>
+            <stop offset="50%" stop-color="rgba(255,255,255,.05)"/>
+            <stop offset="100%" stop-color="rgba(255,255,255,.12)"/>
+          </linearGradient>
+        </defs>
+        <path id="gTrack" fill="none" stroke="url(#trackGrad)" stroke-width="13" stroke-linecap="round"/>
+        <path id="gVal"   fill="none" stroke="url(#valGrad)"   stroke-width="13" stroke-linecap="round"
+              style="filter:drop-shadow(0 0 7px rgba(225,232,245,.45))"/>
+        <g id="gTicks"></g>
+        <g id="gGates"></g>
+      </svg>
+      <div class="gaugeCenter">
+        <div class="big metal num" id="targetBig">—</div>
+        <div class="lbl">of capital</div>
+      </div>
+    </div>
+    <div class="heroFoot">
+      <span class="chip hold" id="actionChip">—</span>
+      <div class="heroMeta">
+        <div><b class="num" id="btcPx">—</b> <span id="ladderSym">BTC</span></div>
+        <div id="snapTs">awaiting first run</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= GATE RAIL ================= -->
+  <section class="card s7">
+    <h2>The Three Gates <button class="info" aria-label="What is this?" aria-expanded="false">i</button> <span class="tag">target = min(desire, macro, confirms)</span></h2>
+    <p class="infoBox" hidden>Why the target is what it is. <b>Desire</b> = how attractive the setup looks (structure + sentiment blended). <b>Macro</b> = the speed limit you set by hand after Fed/CPI events. <b>Confirms</b> = how much price action has actually proven so far. The bright marker is the gate currently holding the target down — the one to watch for the next unlock.</p>
+    <div class="rail">
+      <div class="track"></div>
+      <div class="fill" id="railFill"></div>
+      <div class="gate" id="gateRaw"><i>desire</i><b>—</b></div>
+      <div class="gate" id="gateMacro"><i>macro</i><b>—</b></div>
+      <div class="gate" id="gateCap"><i>confirms</i><b>—</b></div>
+    </div>
+    <div class="bindNote" id="bindNote">—</div>
+    <div class="formula" id="rawFormula">raw desire = 0.55 × structural + 0.45 × sentiment</div>
+    <div class="refRow" id="macroRefs"></div>
+    <div class="refRow" id="capRefs"></div>
+  </section>
+
+  <!-- ================= CONFIRMATIONS ================= -->
+  <section class="card s4">
+    <h2>Confirmation Triggers <button class="info" aria-label="What is this?" aria-expanded="false">i</button> <span class="tag" id="confirmCount">0/3</span></h2>
+    <p class="infoBox" hidden>Three pieces of <b>proof the bottom is actually in</b>, not just that things are cheap. Each green light raises your deployment cap: 0 fired → 30%, 1 → 50%, 2 → 75%, 3 → 100%. BTC reclaiming its 50-day average means the trend is repairing; funding turning positive (and staying positive — one flicker doesn't count) means shorts stopped paying to pile on; Fear &amp; Greed back above 30 means the panic is actually lifting.</p>
+    <div class="confirmRow" id="cReclaim">
+      <span class="led"></span>
+      <div class="t"><b>BTC reclaims level</b><span>—</span></div>
+    </div>
+    <div class="confirmRow" id="cFunding">
+      <span class="led"></span>
+      <div class="t"><b>Funding flips positive</b><span>—</span></div>
+    </div>
+    <div class="confirmRow" id="cFng">
+      <span class="led"></span>
+      <div class="t"><b>Fear &amp; Greed recovers</b><span>—</span></div>
+    </div>
+    <div class="capLine">unlocked deployment cap <b id="capNow">—</b></div>
+  </section>
+
+  <!-- ================= STRUCTURAL ================= -->
+  <section class="card s4">
+    <h2>Structural — Bottom Detector <button class="info" aria-label="What is this?" aria-expanded="false">i</button> <span class="tag" id="structMode">—</span></h2>
+    <p class="infoBox" hidden>Detects <b>forced selling exhausting itself</b> — the mechanical part of a bottom. Deeply negative funding = crowded shorts paying to stay short (squeeze fuel). Open interest dropping hard = leveraged positions already flushed out. Liquidation flush = a cascade that spiked and is now fading. High score means the selling is running out of sellers.</p>
+    <div class="scoreHead"><span class="val metal num" id="structVal">—</span><span class="sub">/ 100 · forced-selling exhaustion</span></div>
+    <div class="meter"><span id="structBar"></span></div>
+    <div class="rows">
+      <div class="row"><span class="k">Funding rate (8h)</span><span class="v" id="rFunding">—</span></div>
+      <div class="row"><span class="k">Open interest Δ 24h</span><span class="v" id="rOi">—</span></div>
+      <div class="row"><span class="k">Liquidation flush</span><span class="v" id="rLiq">—</span></div>
+    </div>
+    <div class="capLine" id="structVerdict">—</div>
+  </section>
+
+  <!-- ================= SENTIMENT ================= -->
+  <section class="card s4">
+    <h2>Sentiment — Contrarian <button class="info" aria-label="What is this?" aria-expanded="false">i</button> <span class="tag">crowd psychology</span></h2>
+    <p class="infoBox" hidden>A pure contrarian read of crowd mood: the score is simply <b>100 minus the Fear &amp; Greed index</b>. Extreme fear = high score = historically the best accumulation zone; euphoria = low score = the worst. BTC dominance is context — whether money is hiding in BTC or spreading out to alts.</p>
+    <div class="scoreHead"><span class="val metal num" id="sentVal">—</span><span class="sub">/ 100 · fear = fuel</span></div>
+    <div class="meter"><span id="sentBar"></span></div>
+    <div class="rows">
+      <div class="row"><span class="k">Fear &amp; Greed index</span><span class="v" id="rFng">—</span></div>
+      <div class="row"><span class="k">BTC dominance</span><span class="v" id="rDom">—</span></div>
+      <div class="row"><span class="k">Blend weight</span><span class="v mu">45% of raw desire</span></div>
+    </div>
+    <div class="capLine" id="sentVerdict">—</div>
+  </section>
+
+  <!-- ================= TREND & CYCLE ================= -->
+  <section class="card s4">
+    <h2>Trend &amp; Cycle <button class="info" aria-label="What is this?" aria-expanded="false">i</button> <span class="tag">price-structure anchor</span></h2>
+    <p class="infoBox" hidden>Where price sits in the bigger picture, from daily candles. The <b>50d / 200d averages</b> give cycle posture (golden = healthy uptrend, death = downtrend; the %s show how far price is from each). <b>20d range position</b> tells you if this dip is at the floor of the recent range (buy zone) or mid-air. <b>Realized vol</b> + its percentile says how violent the tape is — when high, split buys into 2–3 clips instead of one.</p>
+    <div class="rows">
+      <div class="row"><span class="k">50d SMA</span><span class="v" id="tFast">—</span></div>
+      <div class="row"><span class="k">200d SMA</span><span class="v" id="tSlow">—</span></div>
+      <div class="row"><span class="k">Cross state</span><span class="v" id="tCross">—</span></div>
+      <div class="row"><span class="k">20d range position</span><span class="v" id="tRange">—</span></div>
+      <div class="row"><span class="k">Realized vol 30d</span><span class="v" id="tRv">—</span></div>
+    </div>
+    <div class="capLine" id="trendNote">—</div>
+  </section>
+
+  <!-- ================= TOP RISK / OVERHEAT ================= -->
+  <section class="card s4">
+    <h2>Top Risk — Overheat <button class="info" aria-label="What is this?" aria-expanded="false">i</button> <span class="tag" id="ohTag">exit-side mirror</span></h2>
+    <p class="infoBox" hidden>The mirror image of the bottom detector: <b>how crowded and euphoric the long side is</b>. Longs paying rich funding + greed in the index + price stretched far above its 200-day average + open interest ballooning = textbook top conditions. Crossing 60 fires an alert to consider trimming or hedging. This is the card that tells you when to leave the party.</p>
+    <div class="scoreHead"><span class="val metal num" id="ohVal">—</span><span class="sub">/ 100 · crowded-long danger</span></div>
+    <div class="meter"><span id="ohBar"></span></div>
+    <div class="rows">
+      <div class="row"><span class="k">Funding premium</span><span class="v" id="ohFunding">—</span></div>
+      <div class="row"><span class="k">Greed (F&amp;G)</span><span class="v" id="ohFng">—</span></div>
+      <div class="row"><span class="k">200d extension</span><span class="v" id="ohExt">—</span></div>
+      <div class="row"><span class="k">OI ballooning</span><span class="v" id="ohOi">—</span></div>
+    </div>
+    <div class="capLine" id="ohNote">—</div>
+  </section>
+
+  <!-- ================= LIQUIDATIONS ================= -->
+  <section class="card s4">
+    <h2>Liquidation Stream <button class="info" aria-label="What is this?" aria-expanded="false">i</button> <span class="tag" id="liqSyms">—</span></h2>
+    <p class="infoBox" hidden>A live feed of traders being <b>force-closed</b> on Bybit. A spike in LONG liquidations that then fades = the cascade burned itself out — a classic bottom precursor (high flush score). A cascade still growing scores zero: never catch a knife mid-cascade. The stream needs 30 minutes of warm-up before its score is trusted; until then its weight goes to funding + OI.</p>
+    <div class="scoreHead"><span class="val metal num" id="liqVal">—</span><span class="sub" id="liqSub">flush score</span></div>
+    <div class="meter"><span id="liqBar"></span></div>
+    <div class="rows">
+      <div class="row"><span class="k">Websocket</span><span class="v" id="liqWs">—</span></div>
+      <div class="row"><span class="k">Longs liquidated (15m)</span><span class="v" id="liqLong">—</span></div>
+      <div class="row"><span class="k">Shorts liquidated (15m)</span><span class="v" id="liqShort">—</span></div>
+      <div class="row"><span class="k">Events in window</span><span class="v" id="liqCount">—</span></div>
+    </div>
+    <div class="capLine" id="liqVerdict">—</div>
+  </section>
+
+  <!-- ================= WHALE FLOW ================= -->
+  <section class="card s8">
+    <h2>Whale Flow — Smart Money vs Crowd <button class="info" aria-label="What is this?" aria-expanded="false">i</button> <span class="tag" id="whTag">venue evidence</span></h2>
+    <p class="infoBox" hidden>What big players are doing <b>on this venue</b> — no wallet guessing. Every trade on the tape is split into tiers: <b>whale</b> ($100k+ clips), <b>retail</b> (under $10k), and the middle. The headline is whale <b>direction</b> (bias +1 = all buying, −1 = all selling) and the bars show their net flow per 15 minutes. The most information-rich read is the <b>divergence</b>: whales buying what retail is selling = classic bottom behavior; whales selling into retail buying = classic top. Book depth and retail positioning are context — walls can be faked, and whales are usually the other side of a crowded crowd.</p>
+    <div class="whGrid">
+      <div>
+        <div class="scoreHead"><span class="val metal num" id="whDir">—</span><span class="sub" id="whSub">whale direction · 4h</span></div>
+        <div class="tierRow" style="border-top:0"><span class="tl">WHALES</span><div class="splitBar"><span id="whWBar"></span></div><span class="tv" id="whWStat">—</span></div>
+        <div class="tierRow"><span class="tl">RETAIL</span><div class="splitBar"><span id="whRBar"></span></div><span class="tv" id="whRStat">—</span></div>
+        <div class="capLine" id="whDiv">—</div>
+        <div class="capLine" style="border-top:0;padding-top:4px;margin-top:0">sell-side ◂ each bar splits at 50% ▸ buy-side · tape + book + crowd — context, never a gate</div>
+      </div>
+      <div>
+        <div class="dirHead"><span>WHALE NET FLOW · 15-MIN BINS · 4H</span><b id="whNet1b"></b></div>
+        <svg id="whBins" viewBox="0 0 160 40" preserveAspectRatio="none"></svg>
+        <div class="rows">
+          <div class="row"><span class="k">Whale share of tape</span><span class="v" id="whShare">—</span></div>
+          <div class="row"><span class="k">Avg / largest clip</span><span class="v" id="whClips">—</span></div>
+          <div class="row"><span class="k">Book ±2%</span><span class="v" id="whDepth">—</span></div>
+          <div class="row"><span class="k">Retail % long</span><span class="v" id="whCrowd">—</span></div>
+          <div class="row"><span class="k">Absorption</span><span class="v" id="whAbs">—</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= SIZING ================= -->
+  <section class="card s4">
+    <h2>Position Sizing <button class="info" aria-label="What is this?" aria-expanded="false">i</button> <span class="tag" id="sizingTag">tranche advisor</span></h2>
+    <p class="infoBox" hidden>Turns the target % into an instruction against <b>what you actually hold</b>. Type your deployed % below and SET — the gap becomes your ADD or TRIM. With CAPITAL_BASE configured it converts gaps into dollar tranches, split per the strategy: BTC 55% (the only leg that takes leverage), SOL 30% (size, unlevered), catalyst 15% (kept small on purpose). Gaps under 5 points aren't actionable — don't churn.</p>
+    <div class="dual">
+      <div class="lane"><span style="width:46px">target</span><div class="meter"><span id="szTargetBar"></span></div><span class="nv" id="szTargetN">—</span></div>
+      <div class="lane"><span style="width:46px">held</span><div class="meter"><span id="szHeldBar"></span></div><span class="nv" id="szHeldN">—</span></div>
+    </div>
+    <div class="rows">
+      <div class="row"><span class="k">Action</span><span class="v" id="szAction">—</span></div>
+      <div class="row"><span class="k">Gap to close</span><span class="v" id="szGap">—</span></div>
+      <div class="row" id="szUsdRow" style="display:none"><span class="k">Tranche size</span><span class="v" id="szUsd">—</span></div>
+    </div>
+    <div class="splitRow" id="szSplit"></div>
+    <form class="deployForm" id="deployForm">
+      <input id="deployInput" type="number" min="0" max="100" step="1" inputmode="decimal" placeholder="deployed % (e.g. 25)">
+      <button type="submit" id="btnDeploy">SET</button>
+    </form>
+    <div class="capLine" id="szVerdict">—</div>
+  </section>
+
+  <!-- ================= HISTORY ================= -->
+  <section class="card s12">
+    <h2>History <button class="info" aria-label="What is this?" aria-expanded="false">i</button> <span class="tag" id="histSpan">—</span></h2>
+    <p class="infoBox" hidden>Every engine run is stored; these strips show the journey — <b>your target %, BTC price, crowd fear, and overheat</b> over time. The same stored history is what lets the scoring go adaptive: after ~50 readings, "extreme" is graded against the recent regime instead of fixed thresholds.</p>
+    <div class="sparkGrid">
+      <div class="spark"><div class="head"><span>TARGET %</span><b id="hTargetNow">—</b></div><svg id="sparkTarget" preserveAspectRatio="none" viewBox="0 0 100 30"></svg></div>
+      <div class="spark"><div class="head"><span>BTC PRICE</span><b id="hBtcNow">—</b></div><svg id="sparkBtc" preserveAspectRatio="none" viewBox="0 0 100 30"></svg></div>
+      <div class="spark"><div class="head"><span>FEAR &amp; GREED</span><b id="hFngNow">—</b></div><svg id="sparkFng" preserveAspectRatio="none" viewBox="0 0 100 30"></svg></div>
+      <div class="spark"><div class="head"><span>OVERHEAT</span><b id="hOhNow">—</b></div><svg id="sparkOh" preserveAspectRatio="none" viewBox="0 0 100 30"></svg></div>
+      <div class="spark"><div class="head"><span>WHALE BIAS</span><b id="hWbNow">—</b></div><svg id="sparkWb" preserveAspectRatio="none" viewBox="0 0 100 30"></svg></div>
+    </div>
+  </section>
+
+  <!-- ================= MODEL SCORECARD ================= -->
+  <section class="card s12">
+    <h2>Model Scorecard <button class="info" aria-label="What is this?" aria-expanded="false">i</button> <span class="tag" id="scTag">the model grades itself</span></h2>
+    <p class="infoBox" hidden>Every reading the engine has ever taken is checked against <b>what price actually did next</b> — 4 hours, 1 day, and 3 days later. Rows show the median forward move when a signal was active, the hit-rate of its thesis, and the sample size; everything is compared against the same-period <b>baseline</b> so a drifting market can't fake an edge. Dimmed rows have too few samples to trust yet. This card is how thresholds stop being opinions: it starts out empty and becomes evidence as the system runs.</p>
+    <div class="scGrid" id="scGrid"><div style="color:var(--faint);font-size:12.5px">collecting evidence — readings need time to mature</div></div>
+    <div class="capLine" id="scVerdict">—</div>
+  </section>
+
+  <!-- ================= SCANNER ================= -->
+  <section class="card s7">
+    <h2>Market Scanner <button class="info" aria-label="What is this?" aria-expanded="false">i</button> <span class="tag" id="scanUniverse">—</span></h2>
+    <p class="infoBox" hidden>A wide-angle sweep of <b>every liquid Bybit USDT perp</b> ($5M+ daily volume). Breadth = % of names green over 24h — the market's temperature. The tabs rank extremes: biggest losers/gainers, most negative/positive funding, where the volume is, and <b>SQUEEZE</b> — names where crowded shorts meet a beaten-down price, the setups that can snap back violently. This tells you <i>where to look</i>; the watchlist tells you what's happening there.</p>
+    <div class="breadthLine">
+      <span>breadth</span>
+      <div class="meter"><span id="breadthBar"></span></div>
+      <span class="num" id="breadthVal" style="color:var(--txt)">—</span>
+    </div>
+    <div class="seg" id="screenSeg">
+      <button data-s="losers" class="sel">LOSERS</button>
+      <button data-s="gainers">GAINERS</button>
+      <button data-s="funding_neg">FUNDING −</button>
+      <button data-s="squeeze">SQUEEZE</button>
+      <button data-s="funding_pos">FUNDING +</button>
+      <button data-s="turnover">TURNOVER</button>
+    </div>
+    <div class="tblWrap">
+      <table>
+        <thead><tr><th>Symbol</th><th>Price</th><th>24h</th><th>Funding</th><th>Turnover</th></tr></thead>
+        <tbody id="scanBody"><tr><td colspan="5" style="text-align:center;color:var(--faint)">no scan yet — press ⌖ SCAN</td></tr></tbody>
+      </table>
+    </div>
+    <div class="capLine" id="scanVerdict">—</div>
+  </section>
+
+  <!-- ================= WATCHLIST ================= -->
+  <section class="card s5">
+    <h2>Watchlist — Deep Insights <button class="info" aria-label="What is this?" aria-expanded="false">i</button> <span class="tag" id="wlTag">struct · ATH path</span></h2>
+    <p class="infoBox" hidden>Your focus names, examined deeper than the scanner: live price, funding, open-interest change, a per-asset <b>structural bottom score</b>, and how far below all-time high each sits — with the implied multiple back to it (~2.0x means a double just to revisit the high). Amber chips mean the name is showing up in one of the scanner's extreme screens right now.</p>
+    <div id="wlBody"><div style="color:var(--faint);font-size:12.5px">no scan yet — press ⌖ SCAN</div></div>
+    <form class="deployForm" id="wlForm">
+      <input id="wlInput" type="text" autocomplete="off" placeholder="add a symbol — e.g. DOGE or DOGEUSDT">
+      <button type="submit" id="wlAdd">ADD</button>
+    </form>
+    <div class="capLine" id="wlNote">edits apply instantly — validated against Bybit; ATH auto-mapped via CoinGecko</div>
+  </section>
+
+</main>
+
+<footer>
+  <span>engine every <b id="fInterval">—</b> min</span>
+  <span>scan every <b id="fScanInterval">—</b> min</span>
+  <span>watchdog 5 min</span>
+  <span>api: /status /scan /watchlist /history /health</span>
+  <span class="metal" style="font-weight:700">SIGNALIA v2</span>
+</footer>
+
+<div id="toast"></div>
+
+<script>
+const CFG = {{ cfg|tojson }};
+
+/* ---------------- helpers ---------------- */
+const $ = id => document.getElementById(id);
+const fmt$ = (v,d=0) => v==null ? "—" : "$" + Number(v).toLocaleString(undefined,{maximumFractionDigits:d,minimumFractionDigits:d});
+const fmtPx = v => v==null ? "—" : "$" + Number(v).toLocaleString(undefined,{maximumFractionDigits: v>=1000?0: v>=10?2:4});
+const fmtBig = v => v==null ? "—" : v>=1e9 ? "$"+(v/1e9).toFixed(2)+"B" : v>=1e6 ? "$"+(v/1e6).toFixed(1)+"M" : fmt$(v);
+const fmtPct = (v,d=1,signed=true) => v==null ? "—" : ((signed&&v>0?"+":"")+Number(v).toFixed(d)+"%");
+const fundPct = v => v==null ? "—" : (v*100).toFixed(4)+"%";
+const cls = (el,c,on) => el.classList[on?"add":"remove"](c);
+function toast(msg){const t=$("toast");t.textContent=msg;t.classList.add("show");clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove("show"),3200);}
+const KEY=new URLSearchParams(location.search).get("key");   // DASH_TOKEN passthrough
+const withKey=url=>KEY?url+(url.includes("?")?"&":"?")+"key="+encodeURIComponent(KEY):url;
+async function jget(url,opts){
+  const r=await fetch(withKey(url),opts);
+  if(!r.ok)throw new Error(url+" -> "+r.status);return r.json();
+}
+
+/* ---------------- gauge geometry ---------------- */
+const GA0=205, GA1=-25, GCX=110, GCY=112, GR=92;          // 230° sweep
+const pt=(a,r=GR)=>{const rad=a*Math.PI/180;return [GCX+r*Math.cos(rad), GCY-r*Math.sin(rad)];};
+function arcPath(a0,a1,r=GR){
+  const [x0,y0]=pt(a0,r),[x1,y1]=pt(a1,r);
+  const large=(a0-a1)>180?1:0;
+  return `M ${x0.toFixed(2)} ${y0.toFixed(2)} A ${r} ${r} 0 ${large} 1 ${x1.toFixed(2)} ${y1.toFixed(2)}`;
+}
+const angAt=p=>GA0-(GA0-GA1)*Math.min(100,Math.max(0,p))/100;
+function initGauge(){
+  $("gTrack").setAttribute("d",arcPath(GA0,GA1));
+  let ticks="";
+  for(let p=0;p<=100;p+=25){
+    const a=angAt(p),[x0,y0]=pt(a,GR-12),[x1,y1]=pt(a,GR-17);
+    ticks+=`<line x1="${x0}" y1="${y0}" x2="${x1}" y2="${y1}" stroke="rgba(255,255,255,.28)" stroke-width="1.4"/>`;
+    const [tx,ty]=pt(a,GR-27);
+    ticks+=`<text x="${tx}" y="${ty+3}" font-size="8" fill="rgba(255,255,255,.34)" text-anchor="middle" font-family="var(--mono)">${p}</text>`;
+  }
+  $("gTicks").innerHTML=ticks;
+}
+function setGauge(target,gates){
+  $("gVal").setAttribute("d", target>0.4 ? arcPath(GA0,angAt(target)) : "");
+  let g="";
+  (gates||[]).forEach(({p,bind})=>{
+    const a=angAt(p),[x0,y0]=pt(a,GR-8),[x1,y1]=pt(a,GR+9);
+    g+=`<line x1="${x0}" y1="${y0}" x2="${x1}" y2="${y1}" stroke="${bind?"#fff":"rgba(255,255,255,.45)"}" stroke-width="${bind?2.4:1.6}" ${bind?'style="filter:drop-shadow(0 0 5px rgba(255,255,255,.9))"':""}/>`;
+  });
+  $("gGates").innerHTML=g;
+}
+
+/* ---------------- sparkline ---------------- */
+function spark(svgId,vals){
+  const svg=$(svgId);
+  if(!vals||vals.filter(v=>v!=null).length<2){svg.innerHTML=`<text x="50" y="18" font-size="7" fill="rgba(255,255,255,.3)" text-anchor="middle">collecting history…</text>`;return;}
+  const v=vals.map(x=>x==null?null:+x), nn=v.filter(x=>x!=null);
+  const mn=Math.min(...nn), mx=Math.max(...nn), span=(mx-mn)||1, flat=mx===mn;
+  const X=i=>(i/(v.length-1))*100, Y=x=>flat?15:26-((x-mn)/span)*22;
+  let d="",prev=false;
+  v.forEach((x,i)=>{if(x==null){prev=false;return;}d+=(prev?" L":" M")+X(i).toFixed(2)+" "+Y(x).toFixed(2);prev=true;});
+  const last=nn[nn.length-1], li=v.length-1;
+  svg.innerHTML=
+    `<path d="${d} L 100 30 L 0 30 Z" fill="rgba(220,228,240,.07)" stroke="none"/>`+
+    `<path d="${d}" fill="none" stroke="url(#sparkGrad)" stroke-width="1.6" vector-effect="non-scaling-stroke"/>`+
+    `<circle cx="${X(li)}" cy="${Y(last)}" r="2.2" fill="#fff" style="filter:drop-shadow(0 0 3px rgba(255,255,255,.9))"/>`+
+    `<defs><linearGradient id="sparkGrad" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#6e7682"/><stop offset="100%" stop-color="#f4f6fa"/></linearGradient></defs>`;
+}
+
+/* ---------------- whale flow helpers ---------------- */
+const fmtM =v=>v==null?"—":(v<0?"−":"+")+"$"+Math.abs(v/1e6).toFixed(1)+"M";
+const fmtMu=v=>v==null?"—":"$"+Math.abs(v/1e6).toFixed(1)+"M";
+function setSplit(id,buy,sell){const v=buy+sell;$(id).style.width=(v>0?buy/v*100:50)+"%";}
+function renderBins(svgId,bins){
+  const svg=$(svgId);
+  if(!bins||!bins.length||bins.every(b=>!b)){
+    svg.innerHTML=`<text x="80" y="23" font-size="7" fill="rgba(255,255,255,.3)" text-anchor="middle">no whale clips in window yet</text>`;
+    return;
+  }
+  const n=bins.length,W=160,H=40,base=H/2,bw=W/n;
+  const mx=Math.max(...bins.map(b=>Math.abs(b)))||1;
+  let out=`<line x1="0" y1="${base}" x2="${W}" y2="${base}" stroke="rgba(255,255,255,.18)" stroke-width="0.6"/>`;
+  bins.forEach((b,i)=>{
+    const x=i*bw+1,w=Math.max(bw-2,1);
+    if(!b){out+=`<rect x="${x}" y="${base-0.6}" width="${w}" height="1.2" fill="rgba(255,255,255,.12)"/>`;return;}
+    const h=Math.max(Math.abs(b)/mx*(base-3),1);
+    out+=`<rect x="${x}" y="${b>0?base-h:base}" width="${w}" height="${h}" rx="1" fill="${b>0?"rgba(139,232,192,.8)":"rgba(255,139,139,.75)"}"/>`;
+  });
+  svg.innerHTML=out;
+}
+
+/* ---------------- render: status ---------------- */
+let lastTs=null;
+function renderStatus(s,health){
+  if(!s||s.status==="warming up"){$("snapTs").textContent="engine warming up…";return;}
+  const L=s.ladder||{};
+  const target=L.target??0, raw=L.raw_desire??0, ceil=L.macro_ceiling??0, cap=L.confirm_cap??0;
+
+  /* header pills */
+  $("regimePill").textContent=s.regime||"—";
+  $("regimeDot").className="dot "+(s.regime==="SUPPORTIVE"?"on":s.regime==="NEUTRAL"?"mid":"off");
+  const ws=s.ws_connected ?? (health&&health.ws_connected);
+  $("wsPill").textContent=ws?"LIVE":"DOWN";$("wsDot").className="dot "+(ws?"on":"off");
+  const stale=health?health.stale:false;
+  $("stalePill").textContent=stale?"STALE":"FRESH";$("staleDot").className="dot "+(stale?"off":"on");
+  $("modePill").textContent="MODE "+(s.adaptive?"ADAPTIVE":"STATIC");
+  $("gaugeMode").textContent=s.adaptive?"adaptive percentile":"static thresholds (building baseline)";
+  $("structMode").textContent=s.adaptive?"adaptive":"static";
+
+  /* hero */
+  $("targetBig").textContent=Math.round(target)+"%";
+  const binds=[["raw desire",raw],["macro ceiling",ceil],["confirmation cap",cap]];
+  const bind=binds.reduce((a,b)=>b[1]<a[1]?b:a);
+  setGauge(target,[{p:raw,bind:bind[0]==="raw desire"},{p:ceil,bind:bind[0]==="macro ceiling"},{p:cap,bind:bind[0]==="confirmation cap"}]);
+  $("btcPx").textContent=fmtPx(s.btc_price);
+  $("ladderSym").textContent=(CFG.ladder_symbol||"BTCUSDT").replace("USDT","");
+  lastTs=s.ts?new Date(s.ts):new Date();
+
+  const act=(s.sizing&&s.sizing.action)||"—";
+  const chip=$("actionChip");
+  chip.textContent=act+(s.sizing&&s.sizing.actionable===false?" · below tranche min":"");
+  chip.className="chip "+(act==="ADD"?"add":act==="TRIM"?"trim":"hold");
+
+  /* gate rail */
+  $("railFill").style.width=target+"%";
+  const place=(id,p,b)=>{const el=$(id);el.style.left=Math.min(99.2,p)+"%";el.querySelector("b").textContent=Math.round(p);cls(el,"bind",b);return {el,p};};
+  const placed=[
+    place("gateRaw",raw,bind[0]==="raw desire"),
+    place("gateMacro",ceil,bind[0]==="macro ceiling"),
+    place("gateCap",cap,bind[0]==="confirmation cap"),
+  ];
+  /* collision-aware label tiers: stack labels that would overlap */
+  const railW=$("railFill").parentElement.offsetWidth||560;
+  const minSep=(64/railW)*100;                       // ~label width as % of rail
+  let prevP=-999, tier=0;
+  [...placed].sort((a,b2)=>a.p-b2.p).forEach(({el,p})=>{
+    tier=(p-prevP<minSep)?Math.min(tier+1,2):0;
+    el.querySelector("i").style.top=(-15-tier*13)+"px";
+    prevP=p;
+  });
+  $("bindNote").innerHTML=`Deploy <b>${Math.round(target)}%</b> — bound by the <b>${bind[0]}</b> gate (${Math.round(bind[1])}%). The other gates would allow more; discipline says no.`;
+  $("rawFormula").textContent=`raw desire ${raw.toFixed(0)} = 0.55 × structural ${Number(s.structural).toFixed(0)} + 0.45 × sentiment ${Number(s.sentiment).toFixed(0)}`;
+  $("macroRefs").innerHTML=Object.entries(CFG.macro_ceiling).map(([k,v])=>`<span class="ref ${k===s.regime?"hot":""}">${k} ≤${v}%</span>`).join("");
+  $("capRefs").innerHTML=Object.entries(CFG.confirm_caps).map(([k,v])=>`<span class="ref ${+k===(L.confirm_count??0)?"hot":""}">${k} of 3 → ≤${v}%</span>`).join("");
+
+  /* confirmations */
+  const c=s.confirms||{};
+  $("confirmCount").textContent=(L.confirm_count??0)+"/3";
+  const setC=(id,on,title,hint)=>{const el=$(id);cls(el.querySelector(".led"),"on",!!on);
+    el.querySelector(".t b").textContent=title;el.querySelector(".t span").textContent=hint;};
+  const rlvl=s.reclaim_level||CFG.reclaim, rsrc=s.reclaim_source||"manual";
+  const gap=s.btc_price?((rlvl/s.btc_price-1)*100):null;
+  setC("cReclaim",c.btc_reclaim,`BTC reclaims ${fmt$(rlvl)}`,
+       (c.btc_reclaim?"confirmed — price above level":gap!=null?`needs ${fmtPct(gap,1)} from ${fmtPx(s.btc_price)}`:"—")+` · ${rsrc}`);
+  const favg=s.funding_avg;
+  setC("cFunding",c.funding_positive,"Funding flips positive",
+       (c.funding_positive?"confirmed — ":"")+"now "+fundPct(s.funding)
+       +(favg!=null?` · 3-period avg ${fundPct(favg)}`:""));
+  setC("cFng",c.fng_above_30,`Fear & Greed above ${CFG.fng_confirm}`,
+       `now ${s.fng} (${s.fng_class||"—"})`);
+  const cPhrase=["price hasn't proven the turn yet — knife-catch size only",
+                 "first proof is in — the leash gets longer",
+                 "two of three proofs — the turn is likely underway",
+                 "fully proven — the ladder is unlocked"][L.confirm_count??0]||"";
+  $("capNow").textContent=`≤ ${cap}% of capital — ${cPhrase}`;
+
+  /* structural */
+  $("structVal").textContent=Number(s.structural).toFixed(0);
+  $("structBar").style.width=s.structural+"%";
+  const f=s.funding;
+  $("rFunding").innerHTML=`<span class="${f<0?"up":f>0?"dn":"mu"}">${fundPct(f)}</span> <span class="mu">${f<0?"shorts pay — fuel":"longs pay"}</span>`;
+  const oi=s.oi_change*100;
+  $("rOi").innerHTML=`<span class="${oi<=-5?"up":"mu"}">${fmtPct(oi,1)}</span> <span class="mu">${oi<=-12?"flush!":oi<0?"deleveraging":"building"}</span>`;
+  $("rLiq").innerHTML=s.liq_flush!=null?`<span class="up">${Number(s.liq_flush).toFixed(0)} / 100</span> <span class="mu">market-wide</span>`:`<span class="mu">warming up — weight → funding+OI</span>`;
+  $("structVerdict").textContent=
+    s.structural>=65?"washed out — forced selling is largely spent; squeeze fuel is loaded"
+    :s.structural>=40?"building — some pressure has been released, but this isn't full capitulation yet"
+    :"early — the selling pressure hasn't exhausted itself; patience";
+
+  /* sentiment */
+  $("sentVal").textContent=Number(s.sentiment).toFixed(0);
+  $("sentBar").style.width=s.sentiment+"%";
+  $("rFng").innerHTML=`<b class="num">${s.fng}</b> <span class="mu">${s.fng_class||""}</span>`;
+  $("rDom").textContent=s.dominance!=null?Number(s.dominance).toFixed(1)+"%":"—";
+  $("sentVerdict").textContent=
+    s.fng<=20?"extreme fear — the zone where durable bottoms have historically formed"
+    :s.fng<=35?"fear — the contrarian tailwind is building"
+    :s.fng>=65?"greed — no contrarian edge in buying here; watch Top Risk instead"
+    :"neutral mood — sentiment offers no edge either way";
+
+  /* trend & cycle */
+  const t=s.trend;
+  if(t){
+    const sgn=v=>v==null?"":` <span class="${v>0?"up":v<0?"dn":"mu"}">${fmtPct(v,1)}</span>`;
+    $("tFast").innerHTML=t.sma_fast!=null?`${fmt$(t.sma_fast)}${sgn(t.px_vs_fast)}`:"—";
+    $("tSlow").innerHTML=t.sma_slow!=null?`${fmt$(t.sma_slow)}${sgn(t.px_vs_slow)}`:"—";
+    $("tCross").innerHTML=t.golden==null?"—":(t.golden
+      ?`<span class="up">GOLDEN — 50d over 200d</span>`
+      :`<span class="dn">DEATH — 50d under 200d</span>`);
+    $("tRange").innerHTML=t.range_pos!=null
+      ?`<b class="num">${t.range_pos.toFixed(0)}%</b> <span class="mu">${t.range_pos<=25?"at range lows":t.range_pos>=75?"at range highs":"mid-range"}</span>`:"—";
+    $("tRv").innerHTML=t.rv30!=null
+      ?`<b class="num">${t.rv30.toFixed(0)}%</b> <span class="mu">ann.${t.rv_pctile!=null?` · p${Number(t.rv_pctile).toFixed(0)}`:""}</span>`:"—";
+    const notes=[];
+    if(t.range_pos!=null&&t.range_pos<=25)notes.push("dip is at 20d range lows — ladder, don't chase");
+    if(t.rv_pctile!=null&&t.rv_pctile>=CFG.rv_stage)notes.push(`vol p${Number(t.rv_pctile).toFixed(0)} — stage adds in 2–3 clips`);
+    if(t.px_vs_slow!=null)notes.push(t.px_vs_slow>0?"above the 200d — trend tailwind":"below the 200d — counter-trend accumulation");
+    $("trendNote").textContent=notes.join("  ·  ")||"—";
+  }else{
+    ["tFast","tSlow","tCross","tRange","tRv"].forEach(id=>$(id).textContent="—");
+    $("trendNote").textContent="klines unavailable (degraded) — trend context offline";
+  }
+
+  /* overheat / top risk */
+  const oh=s.overheat, op=s.overheat_parts||{};
+  if(oh!=null){
+    $("ohVal").textContent=Number(oh).toFixed(0);
+    const bar=$("ohBar");bar.style.width=oh+"%";
+    bar.style.background=oh>=CFG.overheat_alert?"linear-gradient(90deg,#e9c887,#ff8b8b)":"";
+    $("ohNote").innerHTML=oh>=CFG.overheat_alert
+      ?`<span class="dn">⚠ crowded longs — review trims &amp; hedges</span>`
+      :oh>=35?`warming — watch funding &amp; extension`
+      :`calm — no exit-side pressure (alerts at ${CFG.overheat_alert})`;
+  }
+  const heat=(id,v)=>{$(id).innerHTML=v==null?`<span class="mu">n/a (no trend)</span>`:`<b class="num">${v}</b><span class="mu"> /100</span>`;};
+  heat("ohFunding",op.funding);heat("ohFng",op.fng);heat("ohExt",op.extension);heat("ohOi",op.oi);
+  $("ohTag").textContent=s.overheat_adaptive?"adaptive percentile":"exit-side mirror";
+
+  /* plain-english one-breath read */
+  if(s.read){$("readCard").style.display="";$("plainRead").textContent=s.read;}
+
+  /* degraded sources */
+  const dg=s.degraded||[];
+  $("degPill").style.display=dg.length?"":"none";
+  if(dg.length)$("degList").textContent=dg.join(", ");
+
+  /* whale flow — smart money vs crowd */
+  const wh=s.whales;
+  if(wh){
+    $("whTag").textContent="whale ≥ "+fmtBig(wh.clip_min)+" · retail < "+fmtBig(wh.retail_max||10000)+" · "+(CFG.whale_symbols||["BTCUSDT"]).map(x=>x.replace("USDT","")).join("/");
+    const sm=wh.summary;
+    if(wh.tape_ready&&sm){
+      const W2=sm.whale,R2=sm.retail;
+      const dirEl=$("whDir");
+      dirEl.textContent=W2.bias!=null?(W2.direction||"BALANCED"):"QUIET TAPE";
+      dirEl.className="val num "+(W2.bias!=null&&W2.bias>=0.1?"up":W2.bias!=null&&W2.bias<=-0.1?"dn":"metal");
+      $("whSub").textContent="whale direction · 4h"+(W2.bias!=null?` · bias ${W2.bias>0?"+":""}${W2.bias.toFixed(2)}`:"");
+      setSplit("whWBar",W2.buy,W2.sell);
+      $("whWStat").textContent=`net ${fmtM(W2.net)} · vol ${fmtMu(W2.vol)} · ${W2.count} clips`;
+      setSplit("whRBar",R2.buy,R2.sell);
+      $("whRStat").textContent=`net ${fmtM(R2.net)} · vol ${fmtMu(R2.vol)}`;
+      const dv=sm.divergence;
+      $("whDiv").innerHTML=!dv?"—"
+        :dv.key==="smart_accumulation"?`<span class="up">★ ${dv.text}</span>`
+        :dv.key==="smart_distribution"?`<span class="dn">⚠ ${dv.text}</span>`
+        :`<span class="mu">${dv.text}</span>`;
+      $("whShare").innerHTML=sm.whale_share!=null?`<b class="num">${(sm.whale_share*100).toFixed(0)}%</b> <span class="mu">of all tape volume</span>`:"—";
+      $("whClips").textContent=(W2.avg_clip!=null?fmtBig(W2.avg_clip):"—")+" / "+(W2.max_clip!=null?fmtBig(W2.max_clip):"—");
+      const s1=wh.summary_1h&&wh.summary_1h.whale;
+      $("whNet1b").textContent=s1&&s1.bias!=null?`1h net ${fmtM(s1.net)}`:"";
+      renderBins("whBins",wh.dir_bins);
+    }else{
+      $("whDir").textContent="—";$("whDir").className="val metal num";
+      $("whSub").textContent=wh.tape_connected?"tape warming up (30 min trust window)":"tape disconnected";
+      setSplit("whWBar",0,0);setSplit("whRBar",0,0);
+      $("whWStat").textContent="—";$("whRStat").textContent="—";
+      $("whDiv").innerHTML=`<span class="mu">divergence read unlocks after the 30-min warmup</span>`;
+      $("whShare").textContent="—";$("whClips").textContent="—";$("whNet1b").textContent="";
+      renderBins("whBins",null);
+    }
+    $("whDepth").innerHTML=wh.depth
+      ?`<b class="num">${(wh.depth.bid_share*100).toFixed(0)}%</b> <span class="mu">bid · ${fmtBig(wh.depth.bid_usd)} vs ${fmtBig(wh.depth.ask_usd)}</span>`:"—";
+    $("whCrowd").innerHTML=wh.crowd_long!=null
+      ?`<b class="num">${(wh.crowd_long*100).toFixed(0)}%</b> <span class="${wh.crowd==="crowded long"?"dn":wh.crowd==="crowded short"?"up":"mu"}">${wh.crowd||""}</span>`:"—";
+    $("whAbs").innerHTML=wh.absorption?`<span class="up">${wh.absorption}</span>`:`<span class="mu">none detected</span>`;
+  }
+
+  /* sizing */
+  const z=s.sizing||{};
+  $("szTargetBar").style.width=(z.target_pct??0)+"%";$("szTargetN").textContent=Math.round(z.target_pct??0)+"%";
+  $("szHeldBar").style.width=(z.current_pct??0)+"%";$("szHeldN").textContent=Math.round(z.current_pct??0)+"%";
+  $("szAction").innerHTML=`<span class="${act==="ADD"?"up":act==="TRIM"?"dn":"mu"}">${act}</span>`;
+  $("szGap").textContent=(z.delta_pct!=null?fmtPct(z.delta_pct,0):"—")+" pts";
+  if(z.delta_usd){$("szUsdRow").style.display="";$("szUsd").textContent=fmt$(z.delta_usd);
+    $("szSplit").innerHTML=Object.entries(z.per_asset||{}).map(([k,v])=>`<span class="ref">${k} ${fmt$(v)}</span>`).join("");
+  }else{$("szUsdRow").style.display="none";
+    $("szSplit").innerHTML=CFG.capital_base>0?"":`<span class="ref">set CAPITAL_BASE for $ tranches</span>`+
+      Object.entries(CFG.asset_split).map(([k,v])=>`<span class="ref">${k} ${(v*100).toFixed(0)}%</span>`).join("");}
+  if(act==="ADD"&&t&&t.rv_pctile!=null&&t.rv_pctile>=CFG.rv_stage)
+    $("szSplit").innerHTML+=`<span class="ref" style="color:var(--warn);border-color:rgba(233,200,135,.35)">high vol p${Number(t.rv_pctile).toFixed(0)} — stage in 2–3 clips</span>`;
+  $("sizingTag").textContent=CFG.capital_base>0?fmt$(CFG.capital_base)+" base":"tranche advisor";
+  let szv=z.actionable
+    ?(act==="ADD"?`you're ${Math.round(z.delta_pct)} points behind your own model — place the tranche`
+      :`you're ${Math.round(z.delta_pct)} points ahead of your own model — discipline says trim`)
+    :"within tolerance of the model — sitting still is the trade";
+  if(z.set_age_days!=null&&z.set_age_days>=3)
+    szv+=` · held % last set ${Math.round(z.set_age_days)}d ago — update it if you've traded`;
+  $("szVerdict").textContent=szv;
+
+  /* liquidations */
+  $("liqSyms").textContent=(CFG.liq_symbols||[]).map(x=>x.replace("USDT","")).join(" · ");
+  $("liqWs").innerHTML=ws?`<span class="up">connected</span>`:`<span class="dn">disconnected</span>`;
+  if(s.ws_ready&&s.liq_flush!=null){
+    $("liqVal").textContent=Number(s.liq_flush).toFixed(0);
+    $("liqSub").textContent="flush score · cascade "+(s.liq_flush>=60?"spent":"active/quiet");
+    $("liqBar").style.width=s.liq_flush+"%";
+  }else{
+    $("liqVal").textContent="—";
+    $("liqSub").textContent=`warming up (${Math.round((CFG.liq_warmup_sec||1800)/60)} min trust window)`;
+    $("liqBar").style.width="0%";
+  }
+  const st=s.liq_stats;
+  $("liqLong").textContent=st?fmtBig(st.long):"—";
+  $("liqShort").textContent=st?fmtBig(st.short):"—";
+  $("liqCount").textContent=st?st.count:"—";
+  $("liqVerdict").textContent=(s.ws_ready&&s.liq_flush!=null)
+    ?(s.liq_flush>=60?"a cascade hit and is fading — the forced selling looks spent"
+      :s.liq_flush>0?"a cascade is still live — never catch a knife mid-cascade"
+      :"quiet — no liquidation cascade in the window")
+    :"stream warming up — its weight is rerouted to funding + OI meanwhile";
+}
+
+/* ---------------- render: scan + watchlist ---------------- */
+let scanData=null, curScreen="losers";
+function renderScan(d){
+  if(!d||!d.scan){return;}
+  scanData=d;
+  const sc=d.scan;
+  $("scanUniverse").textContent=sc.universe+" liquid USDT perps";
+  if(d.insights_ts)$("wlTag").textContent="as of "+new Date(d.insights_ts*1000).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
+  $("breadthVal").textContent=Number(sc.breadth).toFixed(1)+"% green";
+  $("breadthBar").style.width=sc.breadth+"%";
+  $("scanVerdict").textContent=sc.breadth<=30
+    ?`broad risk-off — ${(100-sc.breadth).toFixed(0)}% of the market is red; quality discounts live here`
+    :sc.breadth>=70?"broad risk-on — most names are green; chasing gets expensive"
+    :"mixed tape — a selective market, no broad direction to lean on";
+  renderScreen();
+  /* watchlist */
+  const flags=d.watchlist_flags||{};
+  const rows=(d.insights||[]).map(it=>{
+    if(it.error)return `<div class="wlRow"><span class="sym">${it.symbol.replace("USDT","")}</span><span class="px mu">—</span><button class="wlDel" data-sym="${it.symbol}" title="remove from watchlist">✕</button><span class="sub dn">error: ${it.error}</span></div>`;
+    const fl=(flags[it.symbol]||[]).map(f=>`<span class="flag">${f.replace("_"," ")}</span>`).join("");
+    const ath=it.ath_change, closeness=ath!=null?Math.max(0,Math.min(100,100+ath)):null;
+    const mult=ath!=null&&ath>-100?(100/(100+ath)).toFixed(1):null;
+    return `<div class="wlRow">
+      <span class="sym">${it.symbol.replace("USDT","")}${fl}</span>
+      <span class="px">${fmtPx(it.price)}</span>
+      <button class="wlDel" data-sym="${it.symbol}" title="remove from watchlist">✕</button>
+      <span class="sub">fund <span class="${it.funding<0?"up":"mu"}">${fundPct(it.funding)}</span> · OI ${fmtPct(it.oi_change*100,1)}${it.liq_flush!=null?` · liq-flush ${Number(it.liq_flush).toFixed(0)}`:""}</span>
+      <span class="sub">
+        struct <b style="color:var(--txt)">${Number(it.structural).toFixed(0)}</b>${it.struct_note?` <span class="mu">(${it.struct_note})</span>`:""}
+        <span class="miniMeter"><span style="width:${it.structural}%"></span></span>
+        ${ath!=null?`ATH ${ath.toFixed(0)}% <span class="miniMeter"><span style="width:${closeness}%"></span></span>${mult?`~${mult}x`:""}`:""}
+      </span>
+    </div>`;
+  }).join("");
+  $("wlBody").innerHTML=rows||`<div style="color:var(--faint)">no insights</div>`;
+}
+function renderScreen(){
+  if(!scanData)return;
+  const list=(scanData.scan.screens||{})[curScreen]||[];
+  $("scanBody").innerHTML=list.slice(0,8).map(r=>{
+    const ch=r.chg24h*100;
+    return `<tr><td>${r.symbol.replace("USDT","")}</td><td>${fmtPx(r.price)}</td>
+      <td class="${ch>0?"up":ch<0?"dn":"mu"}">${fmtPct(ch,1)}</td>
+      <td class="${r.funding<0?"up":"mu"}">${(r.funding*100).toFixed(3)}%</td>
+      <td>${fmtBig(r.turnover)}</td></tr>`;
+  }).join("")||`<tr><td colspan="5" style="text-align:center;color:var(--faint)">empty screen</td></tr>`;
+}
+/* plain-english card explainers */
+document.querySelectorAll(".info").forEach(btn=>{
+  btn.addEventListener("click",()=>{
+    const box=btn.closest("section").querySelector(".infoBox");
+    if(!box)return;
+    const open=box.hidden;
+    box.hidden=!open;
+    btn.setAttribute("aria-expanded",open?"true":"false");
+  });
+});
+
+$("screenSeg").addEventListener("click",e=>{
+  const b=e.target.closest("button");if(!b)return;
+  curScreen=b.dataset.s;
+  document.querySelectorAll("#screenSeg button").forEach(x=>cls(x,"sel",x===b));
+  renderScreen();
+});
+
+/* ---------------- watchlist editing (runtime, no restart) ---------------- */
+async function wlEdit(action,symbol){
+  try{
+    const r=await fetch(withKey("/watchlist-config"),{method:"POST",
+      headers:{"Content-Type":"application/json"},body:JSON.stringify({action,symbol})});
+    const d=await r.json().catch(()=>({}));
+    if(d.ok){
+      toast(action==="add"
+        ?`${symbol.toUpperCase()} added — ${d.note||"tracking"}`
+        :`${symbol.replace("USDT","")} removed`);
+      if(d.streams_note)$("wlNote").textContent=d.streams_note;
+      await loadScan();
+    }else toast("⚠ "+(d.error||"watchlist edit failed"));
+  }catch(e){toast("⚠ "+e.message);}
+}
+$("wlForm").onsubmit=e=>{
+  e.preventDefault();
+  const v=$("wlInput").value.trim();
+  if(!v)return;
+  withBusy($("wlAdd"),async()=>{await wlEdit("add",v);$("wlInput").value="";});
+};
+$("wlBody").addEventListener("click",e=>{
+  const b=e.target.closest(".wlDel");
+  if(b)wlEdit("remove",b.dataset.sym);
+});
+
+/* ---------------- render: history ---------------- */
+function renderHistory(rows){
+  if(!rows||!rows.length)return;
+  spark("sparkTarget",rows.map(r=>r.target));
+  spark("sparkBtc",rows.map(r=>r.btc_price));
+  spark("sparkFng",rows.map(r=>r.fng));
+  spark("sparkOh",rows.map(r=>r.overheat));
+  spark("sparkWb",rows.map(r=>r.whale_bias));
+  const lastOf=k=>{for(let i=rows.length-1;i>=0;i--)if(rows[i][k]!=null)return rows[i][k];return null;};
+  $("hTargetNow").textContent=lastOf("target")!=null?Math.round(lastOf("target"))+"%":"—";
+  $("hBtcNow").textContent=fmtPx(lastOf("btc_price"));
+  $("hFngNow").textContent=lastOf("fng")??"—";
+  $("hOhNow").textContent=lastOf("overheat")!=null?Math.round(lastOf("overheat")):"—";
+  const wb=lastOf("whale_bias");
+  $("hWbNow").textContent=wb!=null?(wb>0?"+":"")+Number(wb).toFixed(2):"—";
+  const spanH=(rows[rows.length-1].ts-rows[0].ts)/3600;
+  $("histSpan").textContent=rows.length+" runs · "+(spanH>=48?Math.round(spanH/24)+"d":Math.max(1,Math.round(spanH))+"h");
+}
+
+/* ---------------- render: scorecard ---------------- */
+function renderScorecard(sc){
+  if(!sc||!sc.horizons)return;
+  let best=null;
+  const cols=["4h","1d","3d"].map(h=>{
+    const H=sc.horizons[h]||{};
+    const rows=(H.buckets||[]).map(b=>{
+      if(b.confident&&(best==null||Math.abs(b.edge_vs_base)>Math.abs(best.edge)))
+        best={h,label:b.label,edge:b.edge_vs_base,n:b.n,med:b.median_pct,hit:b.hit_rate};
+      const col=b.median_pct>0?"up":b.median_pct<0?"dn":"mu";
+      return `<div class="scRow${b.confident?"":" lowN"}">
+        <span class="lbl">${b.label}${b.confident?"":' <span class="mu">· low n</span>'}</span>
+        <span class="num ${col}">${b.median_pct>0?"+":""}${b.median_pct}%</span>
+        <span class="num mu">${b.hit_rate}% hit</span>
+        <span class="num mu">n=${b.n}</span></div>`;
+    }).join("");
+    return `<div class="scCol"><div class="h"><span>${h.toUpperCase()} AHEAD</span>
+      <b>${H.matured||0} matured${H.baseline_median!=null?` · base ${H.baseline_median>0?"+":""}${H.baseline_median}%`:""}</b></div>
+      ${rows||'<div class="scRow"><span class="lbl mu">no matured samples at this horizon yet</span></div>'}</div>`;
+  }).join("");
+  $("scGrid").innerHTML=cols;
+  $("scTag").textContent=sc.n_readings+" readings logged";
+  $("scVerdict").textContent=best
+    ?`strongest measured edge so far: ${best.label} → median ${best.med>0?"+":""}${best.med}% over ${best.h} (n=${best.n}, ${best.hit}% hit) vs baseline — evidence, not opinion`
+    :`evidence still thin — buckets firm up at n≥${sc.min_n||10}; this card upgrades itself every run the system makes`;
+}
+async function loadScorecard(){try{renderScorecard(await jget("/scorecard"));}catch(e){/* silent */}}
+
+/* ---------------- data loops ---------------- */
+async function loadStatus(){
+  try{
+    const [s,h]=await Promise.all([jget("/status"),jget("/health")]);
+    renderStatus(s,h);
+  }catch(e){toast("⚠ status fetch failed — is the engine up?");}
+}
+async function loadScan(){try{renderScan(await jget("/scan"));}catch(e){/* silent */}}
+async function loadHistory(){try{renderHistory(await jget("/history?n=192"));}catch(e){/* silent */}}
+
+function tickClock(){
+  if(!lastTs){$("clockPill").textContent="updated —";return;}
+  const s=Math.max(0,Math.round((Date.now()-lastTs.getTime())/1000));
+  $("clockPill").textContent="updated "+(s<60?s+"s":Math.round(s/60)+"m")+" ago";
+  $("snapTs").textContent="snapshot "+lastTs.toLocaleTimeString();
+}
+
+/* ---------------- actions ---------------- */
+async function withBusy(btn,fn){
+  btn.disabled=true;btn.classList.add("busy");
+  try{await fn();}catch(e){toast("⚠ "+e.message);}
+  btn.disabled=false;btn.classList.remove("busy");
+}
+$("btnRun").onclick=()=>withBusy($("btnRun"),async()=>{
+  const s=await jget("/run");renderStatus(s,await jget("/health"));loadHistory();loadScorecard();toast("engine run complete");
+});
+$("btnScan").onclick=()=>withBusy($("btnScan"),async()=>{
+  renderScan(await jget("/runscan"));toast("market scan complete");
+});
+$("deployForm").onsubmit=e=>{
+  e.preventDefault();
+  const v=parseFloat($("deployInput").value);
+  if(isNaN(v)||v<0||v>100){toast("enter 0–100");return;}
+  withBusy($("btnDeploy"),async()=>{
+    await jget("/deployed?pct="+v,{method:"POST"});
+    const s=await jget("/run");renderStatus(s,await jget("/health"));
+    toast("deployed % set to "+v+" — sizing recomputed");
+  });
+};
+
+/* ---------------- boot ---------------- */
+if(CFG.pin_enabled){$("btnLock").style.display="";$("btnLock").onclick=()=>location.href="/lock";}
+initGauge();
+$("fInterval").textContent=CFG.interval_min;
+$("fScanInterval").textContent=Math.max(30,CFG.interval_min*2);
+loadStatus();loadScan();loadHistory();loadScorecard();
+setInterval(loadStatus,60000);
+setInterval(loadScan,300000);
+setInterval(loadHistory,300000);
+setInterval(loadScorecard,300000);
+setInterval(tickClock,1000);
+</script>
+</body>
+</html>

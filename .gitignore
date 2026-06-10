@@ -1,0 +1,25 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# --- Local tooling (Claude Code preview/launch config) ---
+.claude/
+
+# --- Runtime data: lives on Render's persistent disk, never in the repo ---
+# (the engine recreates the DB via init_db() + migrations on first boot)
+*.db
+*.sqlite
+*.sqlite3
+state.json
+
+# --- Secrets: only .env.example is committed ---
+.env
+.env.local
+.env.*.local
+
+# --- OS cruft ---
+.DS_Store
+Thumbs.db

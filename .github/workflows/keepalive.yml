@@ -1,0 +1,27 @@
+# Keeps a FREE-tier Render service awake by pinging /ping on a schedule.
+# (Free services spin down after ~15 idle minutes — asleep means no engine runs,
+# no websockets, no alerts, no watchdog.)
+#
+# Setup: repo Settings -> Secrets and variables -> Actions -> Variables ->
+#        add KEEPALIVE_URL = https://<your-app>.onrender.com
+# The job is a silent no-op until that variable exists.
+#
+# Honest caveat: GitHub cron is best-effort and can lag 5–15 min under load,
+# which occasionally lets the service doze off. UptimeRobot free (5-min checks)
+# is more punctual — use this workflow as the zero-signup fallback or as a
+# second pinger alongside it.
+name: keepalive
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping /ping
+        if: ${{ vars.KEEPALIVE_URL != '' }}
+        run: |
+          curl -sS -m 30 -o /dev/null -w "signalia /ping -> %{http_code}\n" \
+            "${{ vars.KEEPALIVE_URL }}/ping" || echo "ping failed (service may be cold-starting)"

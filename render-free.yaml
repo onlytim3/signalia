@@ -1,0 +1,53 @@
+# Signalia — FREE-tier Render blueprint.
+# Use it by swapping it in before you push:   cp render-free.yaml render.yaml
+#
+# What "free" costs you (and the workarounds):
+#   1. Free services SPIN DOWN after ~15 min without inbound HTTP — the scheduler,
+#      websockets, alerts, and even the watchdog all sleep with it. You MUST point
+#      an external pinger at /ping every 5–10 min (it's auth-exempt by design):
+#        - UptimeRobot free (5-min checks, recommended — doubles as uptime alerts), or
+#        - the bundled GitHub Actions workflow (.github/workflows/keepalive.yml).
+#   2. No persistent disk — the DB + alert state reset on every deploy/restart.
+#      The app degrades gracefully: static thresholds until the adaptive baseline
+#      rebuilds (~12.5h of 15-min runs), and one repeat "baseline established"
+#      alert per restart. Liq/whale tapes re-warm for 30 min after each wake.
+#
+# When this starts to matter, `render.yaml` (starter plan + 1GB disk) removes
+# both limitations for roughly the price of one coffee a month.
+services:
+  - type: web
+    name: signalia
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn -w 1 -k gthread --threads 8 app:app
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.4
+      - key: DB_FILE
+        value: ladder.db                 # ephemeral — no disks on the free plan
+      - key: STATE_FILE
+        value: state.json                # ephemeral
+      - key: DASH_PIN
+        sync: false                      # pick your 4-digit PIN — the dashboard lock screen
+      - key: SECRET_KEY
+        generateValue: true              # signs the unlock session cookie (survives restarts)
+      - key: DASH_TOKEN
+        generateValue: true              # machine door for curl/automation (?key=...)
+      - key: MACRO_REGIME
+        value: HOSTILE                   # update after each FOMC/CPI
+      - key: TELEGRAM_TOKEN
+        sync: false                      # set in the Render dashboard (secret)
+      - key: TELEGRAM_CHAT_ID
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: EMAIL_TO
+        sync: false
