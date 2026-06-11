@@ -49,11 +49,18 @@ OI_DROP_FULL = -0.12        # OI down >=12% -> 100
 OI_RISE_ZERO = 0.05         # OI up   >= 5% -> 0
 
 # ---- Live liquidation stream (Bybit All Liquidation WS) ---------------------
-# NOTE: unlike REST, the WS default is the PRIMARY domain. The bytick mirror's
-# WS endpoint went bad (CloudFront accepts the handshake in some regions but
-# never delivers subscription data — "connected" with zero events forever),
-# while stream.bybit.com works even from regions where api.bybit.com is blocked.
-BYBIT_WS = os.getenv("BYBIT_WS", "wss://stream.bybit.com/v5/public/linear")
+# Bybit's WS edges (CloudFront) misbehave per region: an endpoint can accept
+# the handshake and answer protocol pings yet never deliver subscription data
+# ("connected" with zero events forever). So the monitors take a CANDIDATE
+# list and rotate to the next endpoint whenever a connection cycle delivers
+# no frames at all. BYBIT_WS (env) is tried first when set.
+_ws_env = os.getenv("BYBIT_WS")
+BYBIT_WS_CANDIDATES = list(dict.fromkeys(
+    ([_ws_env] if _ws_env else []) + [
+        "wss://stream.bybit.com/v5/public/linear",
+        "wss://stream.bytick.com/v5/public/linear",
+    ]))
+BYBIT_WS = BYBIT_WS_CANDIDATES[0]   # back-compat for anything reading the scalar
 LIQ_MAX_AGE_SEC = 5400      # retain 90 min of events
 LIQ_BIN_SEC = 900           # 15-min bins
 LIQ_BINS = 6                # 6 bins = 90 min window for spike/decay detection

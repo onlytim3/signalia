@@ -41,11 +41,11 @@ _last_scan = {}
 # Persistence + live liquidation stream, handed to the engine.
 store.init_db()
 liq_monitor = liquidations.LiquidationMonitor(
-    C.SYMBOLS, C.BYBIT_WS, C.LIQ_MAX_AGE_SEC, C.LIQ_BIN_SEC
+    C.SYMBOLS, C.BYBIT_WS_CANDIDATES, C.LIQ_MAX_AGE_SEC, C.LIQ_BIN_SEC
 )
 liq_monitor.start()
 engine.LIQ_MONITOR = liq_monitor
-whale_tape = whales.WhaleTapeMonitor(C.WHALE_SYMBOLS, C.BYBIT_WS, C.WHALE_WINDOW_SEC)
+whale_tape = whales.WhaleTapeMonitor(C.WHALE_SYMBOLS, C.BYBIT_WS_CANDIDATES, C.WHALE_WINDOW_SEC)
 whale_tape.start()
 engine.WHALE_TAPE = whale_tape
 _ws_down_since = [None]
@@ -220,7 +220,8 @@ def health():
                     "tape_connected": whale_tape.healthy(), "stale": stale,
                     "ws_silent_sec": _silent(liq_monitor),
                     "tape_silent_sec": _silent(whale_tape),
-                    "ws_url": C.BYBIT_WS})
+                    "ws_url": liq_monitor.active_url,
+                    "tape_url": whale_tape.active_url})
 
 
 @app.route("/status")

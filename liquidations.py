@@ -24,7 +24,10 @@ websocket.setdefaulttimeout(15)   # connect/handshake can't hang a reconnect loo
 class LiquidationMonitor:
     def __init__(self, symbols, ws_url, max_age_sec, bin_sec):
         self.symbols = symbols
-        self.ws_url = ws_url
+        # accept one URL or a candidate list; rotate on totally-silent cycles
+        self.urls = [ws_url] if isinstance(ws_url, str) else list(ws_url)
+        self._url_i = 0
+        self._got_frame = False
         self.max_age = max_age_sec
         self.bin_sec = bin_sec
         self.events = deque()          # (ts_ms, side, notional_usd)
@@ -48,6 +51,7 @@ class LiquidationMonitor:
 
     def _on_message(self, ws, msg):
         self.last_msg_ts = time.time()
+        self._got_frame = True
         try:
             m = json.loads(msg)
         except Exception:
@@ -114,11 +118,17 @@ class LiquidationMonitor:
         except Exception:
             pass
 
+    @property
+    def active_url(self):
+        return self.urls[self._url_i % len(self.urls)] if self.urls else None
+
     def _run(self):
         while True:
+            url = self.active_url
+            self._got_frame = False
             try:
                 self._ws = websocket.WebSocketApp(
-                    self.ws_url,
+                    url,
                     on_open=self._on_open,
                     on_message=self._on_message,
                     on_close=self._on_close,
@@ -128,6 +138,9 @@ class LiquidationMonitor:
             except Exception as e:
                 print("liq ws run error:", e)
             self.connected = False
+            if not self._got_frame and len(self.urls) > 1:
+                self._url_i += 1        # endpoint never sent a frame — rotate
+                print(f"liq ws: {url} delivered nothing — rotating to {self.active_url}")
             time.sleep(5)               # reconnect backoff
 
     def start(self):
