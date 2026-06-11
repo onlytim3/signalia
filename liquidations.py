@@ -29,19 +29,31 @@ class LiquidationMonitor:
         self.lock = threading.Lock()
         self.connected = False
         self.started_at = None
+        self.last_msg_ts = None        # any server traffic (incl. pongs/acks)
         self._ws = None
+
+    # a healthy socket answers our 20s pings, so >90s of total silence means
+    # the connection is dead-but-open (or the subscribe never took) — reconnect
+    SILENT_SEC = 90
 
     # -------------------------- WS callbacks --------------------------------
     def _on_open(self, ws):
         self.connected = True
+        self.last_msg_ts = time.time()
         args = [f"allLiquidation.{s}" for s in self.symbols]
         ws.send(json.dumps({"op": "subscribe", "args": args}))
-        print("liq ws: subscribed", args)
+        print("liq ws: subscribe sent", args)
 
     def _on_message(self, ws, msg):
+        self.last_msg_ts = time.time()
         try:
             m = json.loads(msg)
         except Exception:
+            return
+        if m.get("op") == "subscribe" and not m.get("success", True):
+            # bad endpoint/topic would otherwise look "connected" with 0 events
+            print("liq ws: subscribe REJECTED:", m.get("ret_msg"), "— reconnecting")
+            ws.close()
             return
         if m.get("op") in ("pong", "ping") or m.get("ret_msg") == "pong":
             return
@@ -80,6 +92,10 @@ class LiquidationMonitor:
             try:
                 if self._ws and self.connected:
                     self._ws.send(json.dumps({"op": "ping"}))
+                    silent = time.time() - (self.last_msg_ts or 0)
+                    if self.last_msg_ts and silent > self.SILENT_SEC:
+                        print(f"liq ws: no traffic for {silent:.0f}s — forcing reconnect")
+                        self._ws.close()
             except Exception:
                 pass
 

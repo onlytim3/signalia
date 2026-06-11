@@ -214,8 +214,12 @@ def history():
 def health():
     last = store.get_meta("last_run_ts")
     stale = bool(last and (time.time() - float(last)) > C.STALE_RUN_MIN * 60)
+    def _silent(mon):
+        return round(time.time() - mon.last_msg_ts) if mon.last_msg_ts else None
     return jsonify({"status": "ok", "ws_connected": liq_monitor.connected,
-                    "tape_connected": whale_tape.connected, "stale": stale})
+                    "tape_connected": whale_tape.connected, "stale": stale,
+                    "ws_silent_sec": _silent(liq_monitor),
+                    "tape_silent_sec": _silent(whale_tape)})
 
 
 @app.route("/status")
