@@ -163,19 +163,31 @@ class WhaleTapeMonitor:
         self.lock = threading.Lock()
         self.connected = False
         self.started_at = None
+        self.last_msg_ts = None        # any server traffic (incl. pongs/acks)
         self._ws = None
+
+    # a healthy socket answers our 20s pings, so >90s of total silence means
+    # the connection is dead-but-open (or the subscribe never took) — reconnect
+    SILENT_SEC = 90
 
     # -------------------------- WS callbacks --------------------------------
     def _on_open(self, ws):
         self.connected = True
+        self.last_msg_ts = time.time()
         args = [f"publicTrade.{s}" for s in self.symbols]
         ws.send(json.dumps({"op": "subscribe", "args": args}))
-        print("whale ws: subscribed", args)
+        print("whale ws: subscribe sent", args)
 
     def _on_message(self, ws, msg):
+        self.last_msg_ts = time.time()
         try:
             m = json.loads(msg)
         except Exception:
+            return
+        if m.get("op") == "subscribe" and not m.get("success", True):
+            # bad endpoint/topic would otherwise look "connected" with 0 volume
+            print("whale ws: subscribe REJECTED:", m.get("ret_msg"), "— reconnecting")
+            ws.close()
             return
         if not str(m.get("topic", "")).startswith("publicTrade."):
             return
@@ -219,6 +231,19 @@ class WhaleTapeMonitor:
         for idx in [i for i in self.bins if i < min_idx]:
             del self.bins[idx]
 
+    def _ping_loop(self):
+        while True:
+            time.sleep(20)
+            try:
+                if self._ws and self.connected:
+                    self._ws.send(json.dumps({"op": "ping"}))
+                    silent = time.time() - (self.last_msg_ts or 0)
+                    if self.last_msg_ts and silent > self.SILENT_SEC:
+                        print(f"whale ws: no traffic for {silent:.0f}s — forcing reconnect")
+                        self._ws.close()
+            except Exception:
+                pass
+
     def _run(self):
         while True:
             try:
@@ -238,6 +263,7 @@ class WhaleTapeMonitor:
     def start(self):
         self.started_at = time.time()
         threading.Thread(target=self._run, daemon=True).start()
+        threading.Thread(target=self._ping_loop, daemon=True).start()
 
     # ------------------------------ readers ---------------------------------
     def ready(self, warmup_sec):

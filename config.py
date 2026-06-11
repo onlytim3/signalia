@@ -49,7 +49,11 @@ OI_DROP_FULL = -0.12        # OI down >=12% -> 100
 OI_RISE_ZERO = 0.05         # OI up   >= 5% -> 0
 
 # ---- Live liquidation stream (Bybit All Liquidation WS) ---------------------
-BYBIT_WS = os.getenv("BYBIT_WS", "wss://stream.bytick.com/v5/public/linear")  # mirror; see BYBIT_BASE
+# NOTE: unlike REST, the WS default is the PRIMARY domain. The bytick mirror's
+# WS endpoint went bad (CloudFront accepts the handshake in some regions but
+# never delivers subscription data — "connected" with zero events forever),
+# while stream.bybit.com works even from regions where api.bybit.com is blocked.
+BYBIT_WS = os.getenv("BYBIT_WS", "wss://stream.bybit.com/v5/public/linear")
 LIQ_MAX_AGE_SEC = 5400      # retain 90 min of events
 LIQ_BIN_SEC = 900           # 15-min bins
 LIQ_BINS = 6                # 6 bins = 90 min window for spike/decay detection
