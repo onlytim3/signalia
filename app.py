@@ -41,11 +41,11 @@ _last_scan = {}
 # Persistence + live liquidation stream, handed to the engine.
 store.init_db()
 liq_monitor = liquidations.LiquidationMonitor(
-    C.SYMBOLS, C.BYBIT_WS, C.LIQ_MAX_AGE_SEC, C.LIQ_BIN_SEC
+    C.SYMBOLS, C.BYBIT_WS_CANDIDATES, C.LIQ_MAX_AGE_SEC, C.LIQ_BIN_SEC
 )
 liq_monitor.start()
 engine.LIQ_MONITOR = liq_monitor
-whale_tape = whales.WhaleTapeMonitor(C.WHALE_SYMBOLS, C.BYBIT_WS, C.WHALE_WINDOW_SEC)
+whale_tape = whales.WhaleTapeMonitor(C.WHALE_SYMBOLS, C.BYBIT_WS_CANDIDATES, C.WHALE_WINDOW_SEC)
 whale_tape.start()
 engine.WHALE_TAPE = whale_tape
 _ws_down_since = [None]
@@ -155,7 +155,7 @@ def _watchdog():
         last = store.get_meta("last_run_ts")
         if last and (time.time() - float(last)) > C.STALE_RUN_MIN * 60:
             notify("Signalia DOWN", f"No successful run in {C.STALE_RUN_MIN}+ min.")
-        if not liq_monitor.connected:
+        if not liq_monitor.healthy():
             if _ws_down_since[0] is None:
                 _ws_down_since[0] = time.time()
             elif (time.time() - _ws_down_since[0]) > C.WS_DOWN_MIN * 60:
@@ -163,7 +163,7 @@ def _watchdog():
                 _ws_down_since[0] = time.time()
         else:
             _ws_down_since[0] = None
-        if not whale_tape.connected:
+        if not whale_tape.healthy():
             if _tape_down_since[0] is None:
                 _tape_down_since[0] = time.time()
             elif (time.time() - _tape_down_since[0]) > C.WS_DOWN_MIN * 60:
@@ -216,16 +216,18 @@ def health():
     stale = bool(last and (time.time() - float(last)) > C.STALE_RUN_MIN * 60)
     def _silent(mon):
         return round(time.time() - mon.last_msg_ts) if mon.last_msg_ts else None
-    return jsonify({"status": "ok", "ws_connected": liq_monitor.connected,
-                    "tape_connected": whale_tape.connected, "stale": stale,
+    return jsonify({"status": "ok", "ws_connected": liq_monitor.healthy(),
+                    "tape_connected": whale_tape.healthy(), "stale": stale,
                     "ws_silent_sec": _silent(liq_monitor),
-                    "tape_silent_sec": _silent(whale_tape)})
+                    "tape_silent_sec": _silent(whale_tape),
+                    "ws_url": liq_monitor.active_url,
+                    "tape_url": whale_tape.active_url})
 
 
 @app.route("/status")
 def status():
     out = dict(_last) if _last else {"status": "warming up"}
-    out["ws_connected"] = liq_monitor.connected
+    out["ws_connected"] = liq_monitor.healthy()
     return jsonify(out)
 
 

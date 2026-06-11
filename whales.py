@@ -153,7 +153,10 @@ class WhaleTapeMonitor:
     def __init__(self, symbols, ws_url, max_age_sec, min_clip_usd=None,
                  retail_max_usd=None, bin_sec=900):
         self.symbols = symbols
-        self.ws_url = ws_url
+        # accept one URL or a candidate list; rotate on totally-silent cycles
+        self.urls = [ws_url] if isinstance(ws_url, str) else list(ws_url)
+        self._url_i = 0
+        self._got_frame = False
         self.max_age = max_age_sec
         self.min_clip = min_clip_usd or C.WHALE_MIN_CLIP_USD
         self.retail_max = retail_max_usd or C.WHALE_RETAIL_MAX_USD
@@ -180,6 +183,7 @@ class WhaleTapeMonitor:
 
     def _on_message(self, ws, msg):
         self.last_msg_ts = time.time()
+        self._got_frame = True
         try:
             m = json.loads(msg)
         except Exception:
@@ -234,21 +238,40 @@ class WhaleTapeMonitor:
     def _ping_loop(self):
         while True:
             time.sleep(20)
+            ws = self._ws
+            if not (ws and self.connected):
+                continue
+            # staleness check FIRST: on a zombie connection send() can raise
+            # forever, and a swallowed send error must never mask a dead feed
+            silent = time.time() - self.last_msg_ts if self.last_msg_ts else 0
+            if silent > self.SILENT_SEC:
+                print(f"whale ws: no traffic for {silent:.0f}s — forcing reconnect")
+                self._force_close(ws)
+                continue
             try:
-                if self._ws and self.connected:
-                    self._ws.send(json.dumps({"op": "ping"}))
-                    silent = time.time() - (self.last_msg_ts or 0)
-                    if self.last_msg_ts and silent > self.SILENT_SEC:
-                        print(f"whale ws: no traffic for {silent:.0f}s — forcing reconnect")
-                        self._ws.close()
-            except Exception:
-                pass
+                ws.send(json.dumps({"op": "ping"}))
+            except Exception as e:
+                print("whale ws: ping send failed:", e, "— forcing reconnect")
+                self._force_close(ws)
+
+    def _force_close(self, ws):
+        self.connected = False          # don't trust on_close to fire on a zombie
+        try:
+            ws.close()
+        except Exception:
+            pass
+
+    @property
+    def active_url(self):
+        return self.urls[self._url_i % len(self.urls)] if self.urls else None
 
     def _run(self):
         while True:
+            url = self.active_url
+            self._got_frame = False
             try:
                 self._ws = websocket.WebSocketApp(
-                    self.ws_url,
+                    url,
                     on_open=self._on_open,
                     on_message=self._on_message,
                     on_close=self._on_close,
@@ -258,6 +281,9 @@ class WhaleTapeMonitor:
             except Exception as e:
                 print("whale ws run error:", e)
             self.connected = False
+            if not self._got_frame and len(self.urls) > 1:
+                self._url_i += 1        # endpoint never sent a frame — rotate
+                print(f"whale ws: {url} delivered nothing — rotating to {self.active_url}")
             time.sleep(5)               # reconnect backoff
 
     def start(self):
@@ -266,6 +292,11 @@ class WhaleTapeMonitor:
         threading.Thread(target=self._ping_loop, daemon=True).start()
 
     # ------------------------------ readers ---------------------------------
+    def healthy(self):
+        """Connected AND actually receiving traffic (see LiquidationMonitor)."""
+        return (self.connected and self.last_msg_ts is not None
+                and (time.time() - self.last_msg_ts) < self.SILENT_SEC + 30)
+
     def ready(self, warmup_sec):
         return self.started_at is not None and (time.time() - self.started_at) >= warmup_sec
 
