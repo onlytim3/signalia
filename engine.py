@@ -82,9 +82,11 @@ def gather():
         funding_avg = None                          # confirm degrades to instantaneous
         degraded.append("funding_history")
 
-    # Live liquidation layer (only trusted after warmup; else None -> fallback)
+    # Live liquidation layer (only trusted after warmup AND while the feed is
+    # actually delivering — a silent zombie socket must not read as "quiet")
     liq_flush, liq_stats, ws_ready = None, None, False
-    if LIQ_MONITOR is not None and LIQ_MONITOR.ready(C.LIQ_WARMUP_SEC):
+    if (LIQ_MONITOR is not None and LIQ_MONITOR.ready(C.LIQ_WARMUP_SEC)
+            and LIQ_MONITOR.healthy()):
         ws_ready = True
         liq_flush = S.liq_flush_score(LIQ_MONITOR.long_liq_bins(C.LIQ_BINS))
         liq_stats = LIQ_MONITOR.stats(C.LIQ_BIN_SEC)
@@ -102,7 +104,8 @@ def gather():
         degraded.append("crowd")
     tape_ready, tape_4h, tape_1h = False, None, None
     summary, summary_1h, dir_bins = None, None, None
-    if WHALE_TAPE is not None and WHALE_TAPE.ready(C.WHALE_WARMUP_SEC):
+    if (WHALE_TAPE is not None and WHALE_TAPE.ready(C.WHALE_WARMUP_SEC)
+            and WHALE_TAPE.healthy()):
         tape_ready = True
         tape_4h = WHALE_TAPE.delta(C.WHALE_WINDOW_SEC)
         tape_1h = WHALE_TAPE.delta(3600)
@@ -111,7 +114,7 @@ def gather():
         dir_bins = WHALE_TAPE.whale_net_bins(C.WHALE_DIR_BINS, C.WHALE_BIN_SEC)
     whale_ctx = {
         "tape_ready": tape_ready,
-        "tape_connected": WHALE_TAPE.connected if WHALE_TAPE is not None else False,
+        "tape_connected": WHALE_TAPE.healthy() if WHALE_TAPE is not None else False,
         "clip_min": C.WHALE_MIN_CLIP_USD,
         "retail_max": C.WHALE_RETAIL_MAX_USD,
         "tape_4h": tape_4h,
