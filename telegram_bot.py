@@ -30,6 +30,7 @@ HELP = """Signalia — the ladder in your pocket
 /why — layer-by-layer: what sets today's target
 /deployed 25 — record that you now hold 25%
 /scan — market breadth, movers, squeeze
+/candidates — names earning a watchlist spot
 /watch SOL · /unwatch SOL — edit the watchlist
 /scorecard — the model grading its own calls
 /help — this list"""
@@ -158,6 +159,25 @@ def fmt_scan(scan_data):
     hot = [f"{s.replace('USDT', '')} ({', '.join(v)})" for s, v in flags.items() if v]
     if hot:
         out.append("watchlist flagged: " + " · ".join(hot))
+    sugg = [c for c in (scan_data or {}).get("candidates") or [] if c.get("suggest")]
+    if sugg:
+        out.append("earning a watchlist spot: "
+                   + " · ".join(c["symbol"].replace("USDT", "") for c in sugg[:3])
+                   + " — /candidates for why")
+    return "\n".join(out)
+
+
+def fmt_candidates(scan_data):
+    board = (scan_data or {}).get("candidates")
+    if not board:
+        return ("no candidates yet — the board fills as routine scans "
+                "accumulate (persistence is the signal)")
+    out = ["watchlist candidates (recurrence-scored):"]
+    for c in board:
+        mark = "→" if c.get("suggest") else "·"
+        out.append(f"{mark} {c['symbol'].replace('USDT', '')} "
+                   f"[{c['score']}] {c['reason']}")
+    out.append("→ = clears the suggestion bar · /watch NAME to track one")
     return "\n".join(out)
 
 
@@ -213,6 +233,8 @@ def route(text, ctx):
         return _cmd_deployed(args, ctx.get("snap"))
     if cmd == "/scan":
         return fmt_scan(ctx.get("scan"))
+    if cmd == "/candidates":
+        return fmt_candidates(ctx.get("scan"))
     if cmd == "/scorecard":
         try:
             return fmt_scorecard(scorecard.build())

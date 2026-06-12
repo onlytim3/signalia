@@ -121,11 +121,39 @@ def init_db():
                 snapshot    TEXT
             )""")
         c.execute("CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT)")
+        # scan-driven watchlist discovery: every extreme-screen appearance
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS candidate_hits (
+                ts REAL, symbol TEXT, screen TEXT,
+                chg24h REAL, funding REAL, turnover REAL
+            )""")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_cand_sym "
+                  "ON candidate_hits (symbol, ts)")
         # v3 migration: columns added after first release
         cols = {r[1] for r in c.execute("PRAGMA table_info(readings)")}
         for col in ("overheat", "whale_bias", "retail_bias"):
             if col not in cols:
                 c.execute(f"ALTER TABLE readings ADD COLUMN {col} REAL")
+
+
+# ---- Watchlist-candidate hits (scan-driven discovery) --------------------------
+def add_candidate_hits(hits):
+    """hits: [(ts, symbol, screen, chg24h, funding, turnover), ...]"""
+    if not hits:
+        return
+    with _conn() as c:
+        c.executemany("INSERT INTO candidate_hits VALUES (?, ?, ?, ?, ?, ?)", hits)
+
+
+def candidate_hits(days):
+    """All hits in the window, oldest -> newest; prunes anything older."""
+    cutoff = time.time() - days * 86400
+    with _conn() as c:
+        c.execute("DELETE FROM candidate_hits WHERE ts < ?", (cutoff,))
+        rows = c.execute(
+            "SELECT ts, symbol, screen, chg24h, funding, turnover "
+            "FROM candidate_hits WHERE ts >= ? ORDER BY ts ASC", (cutoff,)).fetchall()
+    return [dict(r) for r in rows]
 
 
 def insert_reading(snap):

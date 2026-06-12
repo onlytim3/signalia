@@ -202,6 +202,33 @@ FUNDING_CONFIRM_N = 3
 SQUEEZE_MIN_NEG_FUNDING = -0.0001   # funding at least this negative
 SQUEEZE_MIN_DROP = -0.05            # and down at least 5% in 24h
 
+# ---- Watchlist candidates (scan-driven discovery) -----------------------------
+# Every routine scan logs which names hit the extreme screens. PERSISTENCE is
+# the signal: one appearance is a pump, a name living in the screens across
+# scans/days is a setup. Recurrence is scored with per-screen weights and a
+# recency half-life; names clearing the bar get suggested (alert + /candidates)
+# with a one-tap /watch. Auto-add stays opt-in — the human confirm is the
+# discipline (set WATCHLIST_AUTO=1 to let high scorers add themselves).
+CAND_WINDOW_DAYS = int(os.getenv("CAND_WINDOW_DAYS", "7"))    # hit memory
+CAND_HALF_LIFE_H = 24          # a hit's weight halves every N hours
+CAND_MIN_HITS = 3              # fewer screen hits than this = noise
+CAND_MIN_BUCKETS = 2           # distinct 6h windows hit — kills one-off pumps
+CAND_SUGGEST_SCORE = float(os.getenv("CAND_SUGGEST_SCORE", "1.8"))
+CAND_ALERT_COOLDOWN_D = 3      # don't re-suggest the same name for N days
+CAND_TOP_N = 8                 # how many ranked candidates to surface
+CAND_SCREEN_W = {              # what each screen appearance is worth
+    "squeeze": 1.0,            # crowded shorts into weakness — the catalyst leg
+    "funding_neg": 0.7,        # crowding building
+    "gainers": 0.6,            # momentum
+    "losers": 0.3,             # weakness alone is only half a setup
+    "funding_pos": 0.2,        # crowded longs — mostly a fade flag
+    "turnover": 0.2,           # liquidity confirmation, never a reason alone
+}
+CAND_EXCLUDE = {               # stable-ish bases the screens sometimes surface
+    "USDCUSDT", "USDEUSDT", "FDUSDUSDT", "DAIUSDT", "TUSDUSDT", "USTCUSDT",
+}
+WATCHLIST_AUTO = os.getenv("WATCHLIST_AUTO", "0") == "1"
+
 # ---- Whale flow (free, venue-level: tape + book depth + crowd ratio) ----------
 # Measures whale BEHAVIOR on Bybit, not wallets. Context + alerts only — it does
 # NOT enter the ladder weights (same probation the liq stream served).

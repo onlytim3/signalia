@@ -381,6 +381,55 @@ if __name__ == "__main__":
     assert cid == "999" and "target 30%" in r, "owner chat must get the status"
     print("telegram-bot  /status·/why·routing·auth ✓  binding-gate=confirmation-cap")
 
+    # ---- v6: scan-driven watchlist candidates ----
+    import candidates as CD
+    now = 1_000_000.0
+    def hit(sym, screen, hours_ago, chg=-0.08, fund=-0.0004, turn=5e7):
+        return {"ts": now - hours_ago * 3600, "symbol": sym, "screen": screen,
+                "chg24h": chg, "funding": fund, "turnover": turn}
+    # persistent squeeze name across 2 days vs a one-off pump 30 min ago
+    hits = ([hit("PEPEUSDT", "squeeze", h) for h in (2, 8, 14, 26, 38)]
+            + [hit("PEPEUSDT", "funding_neg", 20)]
+            + [hit("PUMPUSDT", "gainers", 0.5, chg=0.40)]
+            + [hit("BTCUSDT", "turnover", 1)])          # watchlist name: excluded
+    board = CD.rank(hits, ["BTCUSDT"], now=now)
+    by = {c["symbol"]: c for c in board}
+    assert "BTCUSDT" not in by, "watchlist names must not compete for a spot"
+    pepe, pump = by["PEPEUSDT"], by["PUMPUSDT"]
+    assert board[0]["symbol"] == "PEPEUSDT" and pepe["score"] > pump["score"], \
+        "persistence must outrank a fresh one-off pump"
+    assert pepe["suggest"] and not pump["suggest"], \
+        "one appearance can't clear the suggestion bar"
+    assert pepe["buckets"] >= 2 and "squeeze×5" in pepe["reason"], \
+        "reason must carry the screen recurrence"
+    # decay: the same hits a week later must score far lower
+    later = CD.rank(hits, [], now=now + 7 * 86400)
+    assert {c["symbol"]: c for c in later}["PEPEUSDT"]["score"] < pepe["score"] / 4, \
+        "stale hits must decay hard"
+    print(f"candidates  PEPE[{pepe['score']}] suggest={pepe['suggest']} > "
+          f"PUMP[{pump['score']}] suggest={pump['suggest']}  decay ✓")
+
+    # alert plumbing: fresh suggestion notifies once, cooldown silences repeats
+    sent = []
+    CD.notify = lambda subj, txt: sent.append(subj)
+    ST.set_meta("cand_alerted", "{}")
+    CD._alert_new([pepe], ["BTCUSDT"])
+    CD._alert_new([pepe], ["BTCUSDT"])
+    assert len(sent) == 1 and "PEPE" in sent[0], \
+        "suggest once, then respect the cooldown"
+    auto_prev = CD.C.WATCHLIST_AUTO
+    CD.C.WATCHLIST_AUTO = True
+    ST.set_meta("cand_alerted", "{}")
+    wl_before = ST.get_watchlist()
+    CD._alert_new([pepe], list(wl_before))
+    assert "PEPEUSDT" in ST.get_watchlist(), "WATCHLIST_AUTO must add the name"
+    CD.C.WATCHLIST_AUTO = auto_prev
+    ST.set_watchlist(wl_before)
+    import telegram_bot as TB2
+    txt = TB2.fmt_candidates({"candidates": board})
+    assert "→ PEPE" in txt and "/watch" in txt, "/candidates must mark qualifiers"
+    print("candidates-alerts  once+cooldown ✓  auto-add behind flag ✓")
+
     # ---- v6: backup config gating (no network — just the guard rails) ----
     assert ST.restore_db().get("reason") == "backup not configured", \
         "unconfigured restore must no-op"
