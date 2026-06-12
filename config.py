@@ -116,6 +116,25 @@ EMAIL_TO = os.getenv("EMAIL_TO", "")
 # ---- Persistence (time-series store) ----------------------------------------
 DB_FILE = os.getenv("DB_FILE", "ladder.db")        # on Render -> /data/ladder.db
 
+# ---- DB snapshot backup (free-tier amnesia fix) -------------------------------
+# Render's free tier wipes local disk on every restart, resetting the adaptive
+# baselines (~12h rebuild) and silently truncating the scorecard history the
+# model self-grades on. Fix for $0: gzip the SQLite file on a schedule, push it
+# to a PRIVATE GitHub repo via the contents API, restore on boot when the local
+# DB is missing/empty. Leave BACKUP_REPO/BACKUP_TOKEN unset to disable.
+BACKUP_REPO = os.getenv("BACKUP_REPO", "")         # e.g. "you/signalia-data" (PRIVATE)
+BACKUP_TOKEN = os.getenv("BACKUP_TOKEN", "")       # GitHub PAT, contents read/write
+BACKUP_BRANCH = os.getenv("BACKUP_BRANCH", "main")
+BACKUP_DB_PATH = os.getenv("BACKUP_DB_PATH", "ladder.db.gz")
+BACKUP_EVERY_HOURS = int(os.getenv("BACKUP_EVERY_HOURS", "12"))
+
+# ---- Telegram two-way bot ------------------------------------------------------
+# The webhook auto-registers at boot when TELEGRAM_TOKEN and a public base URL
+# both exist. Render injects RENDER_EXTERNAL_URL automatically; override with
+# TELEGRAM_WEBHOOK_BASE elsewhere. Only TELEGRAM_CHAT_ID gets answered.
+TELEGRAM_WEBHOOK_BASE = os.getenv("TELEGRAM_WEBHOOK_BASE",
+                                  os.getenv("RENDER_EXTERNAL_URL", ""))
+
 # ---- Adaptive thresholds (rolling-percentile scoring) -----------------------
 BASELINE_DAYS = int(os.getenv("BASELINE_DAYS", "30"))   # rolling window
 BASELINE_MIN_SAMPLES = 50      # below this, fall back to static _lin scoring
@@ -182,6 +201,33 @@ FUNDING_CONFIRM_N = 3
 # ---- Squeeze screen (scanner composite: crowded shorts into weakness) --------
 SQUEEZE_MIN_NEG_FUNDING = -0.0001   # funding at least this negative
 SQUEEZE_MIN_DROP = -0.05            # and down at least 5% in 24h
+
+# ---- Watchlist candidates (scan-driven discovery) -----------------------------
+# Every routine scan logs which names hit the extreme screens. PERSISTENCE is
+# the signal: one appearance is a pump, a name living in the screens across
+# scans/days is a setup. Recurrence is scored with per-screen weights and a
+# recency half-life; names clearing the bar get suggested (alert + /candidates)
+# with a one-tap /watch. Auto-add stays opt-in — the human confirm is the
+# discipline (set WATCHLIST_AUTO=1 to let high scorers add themselves).
+CAND_WINDOW_DAYS = int(os.getenv("CAND_WINDOW_DAYS", "7"))    # hit memory
+CAND_HALF_LIFE_H = 24          # a hit's weight halves every N hours
+CAND_MIN_HITS = 3              # fewer screen hits than this = noise
+CAND_MIN_BUCKETS = 2           # distinct 6h windows hit — kills one-off pumps
+CAND_SUGGEST_SCORE = float(os.getenv("CAND_SUGGEST_SCORE", "1.8"))
+CAND_ALERT_COOLDOWN_D = 3      # don't re-suggest the same name for N days
+CAND_TOP_N = 8                 # how many ranked candidates to surface
+CAND_SCREEN_W = {              # what each screen appearance is worth
+    "squeeze": 1.0,            # crowded shorts into weakness — the catalyst leg
+    "funding_neg": 0.7,        # crowding building
+    "gainers": 0.6,            # momentum
+    "losers": 0.3,             # weakness alone is only half a setup
+    "funding_pos": 0.2,        # crowded longs — mostly a fade flag
+    "turnover": 0.2,           # liquidity confirmation, never a reason alone
+}
+CAND_EXCLUDE = {               # stable-ish bases the screens sometimes surface
+    "USDCUSDT", "USDEUSDT", "FDUSDUSDT", "DAIUSDT", "TUSDUSDT", "USTCUSDT",
+}
+WATCHLIST_AUTO = os.getenv("WATCHLIST_AUTO", "0") == "1"
 
 # ---- Whale flow (free, venue-level: tape + book depth + crowd ratio) ----------
 # Measures whale BEHAVIOR on Bybit, not wallets. Context + alerts only — it does

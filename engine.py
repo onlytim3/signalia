@@ -12,6 +12,7 @@ import time
 import config as C
 import signals as S
 import baseline
+import candidates
 import store
 import scanner
 import scorecard
@@ -523,8 +524,14 @@ def run_scan():
     scan = scanner.scan_market()
     flags = scanner.watchlist_flags(scan, syms)
     insights = wl.build(syms, LIQ_MONITOR)
+    try:    # scan-driven watchlist discovery (recurrence across scans)
+        cands = candidates.update(scan, syms)
+    except Exception as e:
+        print("candidates error:", e)
+        cands = None
     now = time.time()
     return {"scan": scan, "watchlist_flags": flags, "insights": insights,
+            "candidates": cands,
             "watchlist": syms, "scan_ts": now, "insights_ts": now}
 
 

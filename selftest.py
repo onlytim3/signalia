@@ -341,6 +341,102 @@ if __name__ == "__main__":
     assert not any("DIVERGENCE" in m for m in m3), "same verdict must not re-alert until it decays"
     print("divergence-persistence  run1=silent  run2=alert  run3=silent  ✓")
 
+    # ---- v6: telegram bot (pure routing + formatting; no network) ----
+    import telegram_bot as TB
+    bot_snap = {
+        "ladder": {"raw_desire": 42.3, "macro_ceiling": 40, "confirm_cap": 30,
+                   "confirm_count": 0, "target": 30.0},
+        "read": "The crowd is fearful; stay staged.",
+        "sizing": {"action": "ADD", "actionable": True, "current_pct": 10.0,
+                   "delta_pct": 20.0, "delta_usd": 2000.0},
+        "fng": 22, "fng_class": "Extreme Fear", "structural": 54.0,
+        "sentiment": 28.0, "funding": -0.000123, "oi_change": -0.032,
+        "liq_flush": 12.0, "regime": "HOSTILE", "overheat": 18.0,
+        "btc_price": 71234.0, "reclaim_level": 74000.0,
+        "confirms": {"btc_reclaim": False, "funding_positive": False,
+                     "fng_above_30": False},
+        "degraded": [],
+    }
+    st = TB.fmt_status(bot_snap)
+    assert "target 30%" in st and "held 10%" in st and "ADD $2,000" in st, \
+        "status must carry target/held/tranche"
+    why = TB.fmt_why(bot_snap)
+    assert "confirmation cap" in why and "0/3" in why and "✗" in why, \
+        "/why must name the binding gate and the unfired triggers"
+    assert TB.binding_gate({"target": 40, "raw_desire": 70, "macro_ceiling": 40,
+                            "confirm_cap": 50}).startswith("macro ceiling"), \
+        "binding gate must identify the macro brake"
+    ctx = {"snap": bot_snap, "scan": None,
+           "watch": lambda s: f"added {s}", "unwatch": lambda s: f"removed {s}"}
+    assert TB.route("/help", ctx) == TB.HELP
+    assert TB.route("/status@SignaliaBot", ctx) == st, "@botname suffix must strip"
+    assert TB.route("/watch SOL", ctx) == "added SOL"
+    assert "usage" in TB.route("/watch", ctx), "missing arg -> usage hint"
+    assert "unknown" in TB.route("/nope", ctx)
+    assert "no scan yet" in TB.fmt_scan(None)
+    r, cid = TB.handle_update({"message": {"chat": {"id": 999}, "text": "/status"}}, ctx)
+    assert r is None and cid is None, "strangers must get silence"
+    TB.C.TELEGRAM_CHAT_ID = "999"
+    r, cid = TB.handle_update({"message": {"chat": {"id": 999}, "text": "/status"}}, ctx)
+    assert cid == "999" and "target 30%" in r, "owner chat must get the status"
+    print("telegram-bot  /status·/why·routing·auth ✓  binding-gate=confirmation-cap")
+
+    # ---- v6: scan-driven watchlist candidates ----
+    import candidates as CD
+    now = 1_000_000.0
+    def hit(sym, screen, hours_ago, chg=-0.08, fund=-0.0004, turn=5e7):
+        return {"ts": now - hours_ago * 3600, "symbol": sym, "screen": screen,
+                "chg24h": chg, "funding": fund, "turnover": turn}
+    # persistent squeeze name across 2 days vs a one-off pump 30 min ago
+    hits = ([hit("PEPEUSDT", "squeeze", h) for h in (2, 8, 14, 26, 38)]
+            + [hit("PEPEUSDT", "funding_neg", 20)]
+            + [hit("PUMPUSDT", "gainers", 0.5, chg=0.40)]
+            + [hit("BTCUSDT", "turnover", 1)])          # watchlist name: excluded
+    board = CD.rank(hits, ["BTCUSDT"], now=now)
+    by = {c["symbol"]: c for c in board}
+    assert "BTCUSDT" not in by, "watchlist names must not compete for a spot"
+    pepe, pump = by["PEPEUSDT"], by["PUMPUSDT"]
+    assert board[0]["symbol"] == "PEPEUSDT" and pepe["score"] > pump["score"], \
+        "persistence must outrank a fresh one-off pump"
+    assert pepe["suggest"] and not pump["suggest"], \
+        "one appearance can't clear the suggestion bar"
+    assert pepe["buckets"] >= 2 and "squeeze×5" in pepe["reason"], \
+        "reason must carry the screen recurrence"
+    # decay: the same hits a week later must score far lower
+    later = CD.rank(hits, [], now=now + 7 * 86400)
+    assert {c["symbol"]: c for c in later}["PEPEUSDT"]["score"] < pepe["score"] / 4, \
+        "stale hits must decay hard"
+    print(f"candidates  PEPE[{pepe['score']}] suggest={pepe['suggest']} > "
+          f"PUMP[{pump['score']}] suggest={pump['suggest']}  decay ✓")
+
+    # alert plumbing: fresh suggestion notifies once, cooldown silences repeats
+    sent = []
+    CD.notify = lambda subj, txt: sent.append(subj)
+    ST.set_meta("cand_alerted", "{}")
+    CD._alert_new([pepe], ["BTCUSDT"])
+    CD._alert_new([pepe], ["BTCUSDT"])
+    assert len(sent) == 1 and "PEPE" in sent[0], \
+        "suggest once, then respect the cooldown"
+    auto_prev = CD.C.WATCHLIST_AUTO
+    CD.C.WATCHLIST_AUTO = True
+    ST.set_meta("cand_alerted", "{}")
+    wl_before = ST.get_watchlist()
+    CD._alert_new([pepe], list(wl_before))
+    assert "PEPEUSDT" in ST.get_watchlist(), "WATCHLIST_AUTO must add the name"
+    CD.C.WATCHLIST_AUTO = auto_prev
+    ST.set_watchlist(wl_before)
+    import telegram_bot as TB2
+    txt = TB2.fmt_candidates({"candidates": board})
+    assert "→ PEPE" in txt and "/watch" in txt, "/candidates must mark qualifiers"
+    print("candidates-alerts  once+cooldown ✓  auto-add behind flag ✓")
+
+    # ---- v6: backup config gating (no network — just the guard rails) ----
+    assert ST.restore_db().get("reason") == "backup not configured", \
+        "unconfigured restore must no-op"
+    assert ST.backup_db().get("reason") == "backup not configured", \
+        "unconfigured backup must no-op"
+    print("db-backup  unconfigured -> clean no-op ✓")
+
     print("\nAll sanity checks passed.")
     print("Reads correctly: the binding gate shifts from confirmation-cap (deep fear, "
           "no price confirm) to macro-ceiling (once price confirms) — exactly the staging discipline.")
