@@ -116,6 +116,25 @@ EMAIL_TO = os.getenv("EMAIL_TO", "")
 # ---- Persistence (time-series store) ----------------------------------------
 DB_FILE = os.getenv("DB_FILE", "ladder.db")        # on Render -> /data/ladder.db
 
+# ---- DB snapshot backup (free-tier amnesia fix) -------------------------------
+# Render's free tier wipes local disk on every restart, resetting the adaptive
+# baselines (~12h rebuild) and silently truncating the scorecard history the
+# model self-grades on. Fix for $0: gzip the SQLite file on a schedule, push it
+# to a PRIVATE GitHub repo via the contents API, restore on boot when the local
+# DB is missing/empty. Leave BACKUP_REPO/BACKUP_TOKEN unset to disable.
+BACKUP_REPO = os.getenv("BACKUP_REPO", "")         # e.g. "you/signalia-data" (PRIVATE)
+BACKUP_TOKEN = os.getenv("BACKUP_TOKEN", "")       # GitHub PAT, contents read/write
+BACKUP_BRANCH = os.getenv("BACKUP_BRANCH", "main")
+BACKUP_DB_PATH = os.getenv("BACKUP_DB_PATH", "ladder.db.gz")
+BACKUP_EVERY_HOURS = int(os.getenv("BACKUP_EVERY_HOURS", "12"))
+
+# ---- Telegram two-way bot ------------------------------------------------------
+# The webhook auto-registers at boot when TELEGRAM_TOKEN and a public base URL
+# both exist. Render injects RENDER_EXTERNAL_URL automatically; override with
+# TELEGRAM_WEBHOOK_BASE elsewhere. Only TELEGRAM_CHAT_ID gets answered.
+TELEGRAM_WEBHOOK_BASE = os.getenv("TELEGRAM_WEBHOOK_BASE",
+                                  os.getenv("RENDER_EXTERNAL_URL", ""))
+
 # ---- Adaptive thresholds (rolling-percentile scoring) -----------------------
 BASELINE_DAYS = int(os.getenv("BASELINE_DAYS", "30"))   # rolling window
 BASELINE_MIN_SAMPLES = 50      # below this, fall back to static _lin scoring

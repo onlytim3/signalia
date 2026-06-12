@@ -1,14 +1,27 @@
 """
-Signalia — time-series persistence (SQLite, stdlib only).
+Signalia — time-series persistence (SQLite, stdlib only) + snapshot backup.
 
 Logs every engine reading so adaptive thresholds have a rolling baseline and
 the dashboard has history. On Render, point DB_FILE at the persistent disk.
+
+Free-tier amnesia fix: when BACKUP_REPO/BACKUP_TOKEN are set, backup_db()
+pushes a gzipped snapshot of the DB to a private GitHub repo on a schedule,
+and init_db() restores it on boot if the local DB is missing or empty — so
+baselines and scorecard history survive ephemeral-disk restarts.
 """
+import base64
+import gzip
 import json
+import os
 import sqlite3
+import tempfile
 import time
 
+import requests
+
 import config as C
+
+GH_API = "https://api.github.com"
 
 _FIELDS = ["funding", "oi_change", "fng", "btc_price",
            "structural", "sentiment", "target", "liq_flush", "overheat",
@@ -21,7 +34,84 @@ def _conn():
     return c
 
 
+# ---- Snapshot backup / restore (GitHub contents API; optional) ----------------
+def _backup_enabled():
+    return bool(C.BACKUP_REPO and C.BACKUP_TOKEN)
+
+
+def _gh_headers(raw=False):
+    return {"Authorization": f"Bearer {C.BACKUP_TOKEN}",
+            "Accept": "application/vnd.github.raw+json" if raw
+                      else "application/vnd.github+json",
+            "User-Agent": "signalia/3.0"}
+
+
+def _contents_url():
+    return f"{GH_API}/repos/{C.BACKUP_REPO}/contents/{C.BACKUP_DB_PATH}"
+
+
+def backup_db():
+    """Push a gzipped, transactionally-consistent snapshot of the DB."""
+    if not _backup_enabled():
+        return {"ok": False, "reason": "backup not configured"}
+    fd, tmp = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    try:
+        src, dst = sqlite3.connect(C.DB_FILE, timeout=10), sqlite3.connect(tmp)
+        with dst:
+            src.backup(dst)             # consistent copy even mid-write
+        src.close(); dst.close()
+        with open(tmp, "rb") as f:
+            blob = gzip.compress(f.read())
+    finally:
+        os.unlink(tmp)
+    sha = None                          # updating an existing file needs its sha
+    r = requests.get(_contents_url(), headers=_gh_headers(),
+                     params={"ref": C.BACKUP_BRANCH}, timeout=30)
+    if r.status_code == 200:
+        sha = r.json().get("sha")
+    body = {"message": "db snapshot "
+                       + time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime()),
+            "content": base64.b64encode(blob).decode(), "branch": C.BACKUP_BRANCH}
+    if sha:
+        body["sha"] = sha
+    r = requests.put(_contents_url(), headers=_gh_headers(), json=body, timeout=60)
+    ok = r.status_code in (200, 201)
+    if not ok:
+        print("backup_db failed:", r.status_code, r.text[:200])
+    return {"ok": ok, "bytes": len(blob), "http": r.status_code}
+
+
+def restore_db():
+    """Pull the latest snapshot when the local DB is missing or has no readings
+    (a fresh boot on an ephemeral disk). NEVER overwrites real local history."""
+    if not _backup_enabled():
+        return {"ok": False, "reason": "backup not configured"}
+    if os.path.exists(C.DB_FILE):
+        try:
+            with _conn() as c:
+                n = c.execute("SELECT COUNT(*) FROM readings").fetchone()[0]
+            if n > 0:
+                return {"ok": False, "reason": f"local db already has {n} readings"}
+        except sqlite3.Error:
+            pass                        # unreadable/empty file -> restore over it
+    r = requests.get(_contents_url(), headers=_gh_headers(raw=True),
+                     params={"ref": C.BACKUP_BRANCH}, timeout=60)
+    if r.status_code != 200:
+        return {"ok": False, "reason": f"no snapshot ({r.status_code})"}
+    with open(C.DB_FILE, "wb") as f:
+        f.write(gzip.decompress(r.content))
+    return {"ok": True, "bytes": len(r.content)}
+
+
 def init_db():
+    try:                                # no-op unless configured AND db empty
+        res = restore_db()
+        if res.get("ok"):
+            print("store: restored db snapshot from backup repo,",
+                  res["bytes"], "bytes (gz)")
+    except Exception as e:
+        print("store: restore_db error:", e)
     with _conn() as c:
         c.execute("""
             CREATE TABLE IF NOT EXISTS readings (

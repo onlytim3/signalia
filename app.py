@@ -10,6 +10,7 @@ Run on Render: gunicorn -w 1 app:app     (one worker — avoids duplicate schedu
 import datetime
 import hmac
 import os
+import threading
 import time
 from collections import deque
 
@@ -23,6 +24,7 @@ import scanner
 import scorecard
 import signals as S
 import store
+import telegram_bot
 import watchlist as wl
 import whales
 from notifier import notify
@@ -57,7 +59,9 @@ _tape_down_since = [None]
 # POST /unlock sets a signed 30-day session. ?key=/X-Auth-Token still works for
 # curl + automations. Wrong PINs are rate-limited per IP — 4 digits is a small
 # space, so the lockout is what makes it safe.
-_OPEN_PATHS = {"/ping", "/health", "/unlock", "/lock"}
+# /telegram-webhook is open because Telegram's servers can't carry the dash
+# token — it authenticates with its own secret header inside the route instead.
+_OPEN_PATHS = {"/ping", "/health", "/unlock", "/lock", "/telegram-webhook"}
 _PIN_FAILS = {}            # ip -> deque of failure timestamps
 PIN_MAX_FAILS = 5
 PIN_LOCKOUT_SEC = 300
@@ -283,35 +287,32 @@ def watchlist_config():
                     "cg_map": store.get_cg_map()})
 
 
-@app.route("/watchlist-config", methods=["POST"])
-def watchlist_config_set():
-    """Add/remove a watchlist symbol at runtime — validated live against Bybit,
-    CoinGecko id auto-resolved so ATH tracking works for new names. No restart."""
-    body = request.get_json(silent=True) or {}
-    action = body.get("action")
-    sym = str(body.get("symbol", "")).upper().strip().replace("/", "").replace("-", "")
+def _watchlist_change(action, symbol):
+    """Shared core for the dashboard route and the Telegram bot.
+    Returns (payload_dict, http_status); payload always has ok + error/note."""
+    sym = str(symbol or "").upper().strip().replace("/", "").replace("-", "")
     if sym and not sym.endswith("USDT"):
         sym += "USDT"                                  # convenience: "doge" works
     if action not in ("add", "remove") or not sym:
-        return jsonify({"ok": False, "error": "need action add|remove + symbol"}), 400
+        return {"ok": False, "error": "need action add|remove + symbol"}, 400
     cur = store.get_watchlist()
 
     if action == "remove":
         if sym not in cur:
-            return jsonify({"ok": False, "error": f"{sym} is not on the watchlist"}), 404
+            return {"ok": False, "error": f"{sym} is not on the watchlist"}, 404
         cur = [s for s in cur if s != sym]
         store.set_watchlist(cur)
         _refresh_insights()
-        return jsonify({"ok": True, "watchlist": cur})
+        return {"ok": True, "symbol": sym, "watchlist": cur}, 200
 
     if sym in cur:
-        return jsonify({"ok": False, "error": f"{sym} is already on the watchlist"}), 409
+        return {"ok": False, "error": f"{sym} is already on the watchlist"}, 409
     if len(cur) >= 12:
-        return jsonify({"ok": False, "error": "watchlist capped at 12 names — focus is the feature"}), 400
+        return {"ok": False, "error": "watchlist capped at 12 names — focus is the feature"}, 400
     try:                                               # validate: real Bybit linear perp?
         ticker = S.bybit_ticker(sym)
     except Exception:
-        return jsonify({"ok": False, "error": f"{sym} is not a tradable Bybit USDT perp"}), 400
+        return {"ok": False, "error": f"{sym} is not a tradable Bybit USDT perp"}, 400
 
     cur.append(sym)
     store.set_watchlist(cur)
@@ -320,14 +321,68 @@ def watchlist_config_set():
         store.add_cg_id(sym, cg)
     _refresh_insights()
     streamed = sorted(set(C.SYMBOLS) | set(C.WHALE_SYMBOLS))
-    return jsonify({
-        "ok": True, "watchlist": cur, "price": ticker["price"], "cg_id": cg,
+    return {
+        "ok": True, "symbol": sym, "watchlist": cur,
+        "price": ticker["price"], "cg_id": cg,
         "note": (f"ATH tracking via CoinGecko '{cg}'" if cg
                  else "no CoinGecko match — ATH distance unavailable for this name"),
         "streams_note": ("liquidation/whale streams stay on "
                          + "/".join(s.replace("USDT", "") for s in streamed)
                          + " until a restart (env LIQ_SYMBOLS / WHALE_SYMBOLS)"),
-    })
+    }, 200
+
+
+@app.route("/watchlist-config", methods=["POST"])
+def watchlist_config_set():
+    """Add/remove a watchlist symbol at runtime — validated live against Bybit,
+    CoinGecko id auto-resolved so ATH tracking works for new names. No restart."""
+    body = request.get_json(silent=True) or {}
+    payload, status = _watchlist_change(body.get("action"), body.get("symbol"))
+    return jsonify(payload), status
+
+
+def _bot_watch(sym):
+    payload, _ = _watchlist_change("add", sym)
+    if not payload.get("ok"):
+        return payload.get("error")
+    return (f"added {payload['symbol']} @ ${payload['price']:,.4g}. "
+            f"{payload.get('note', '')}")
+
+
+def _bot_unwatch(sym):
+    payload, _ = _watchlist_change("remove", sym)
+    if not payload.get("ok"):
+        return payload.get("error")
+    return ("removed " + payload["symbol"] + ". watchlist: "
+            + ", ".join(s.replace("USDT", "") for s in payload["watchlist"]))
+
+
+@app.route("/telegram-webhook", methods=["POST"])
+def telegram_webhook():
+    """Two-way Telegram bot. Open path; authenticated by the secret-token
+    header Telegram echoes back from webhook registration."""
+    if not C.TELEGRAM_TOKEN:
+        return jsonify({"ok": False}), 404
+    supplied = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
+    if not hmac.compare_digest(supplied, telegram_bot.webhook_secret()):
+        return jsonify({"ok": False}), 403
+    update = request.get_json(silent=True) or {}
+    ctx = {"snap": _last, "scan": _last_scan,
+           "watch": _bot_watch, "unwatch": _bot_unwatch}
+    try:
+        reply, chat_id = telegram_bot.handle_update(update, ctx)
+    except Exception as e:                # a bad command must never 500 the hook
+        print("telegram handler error:", e)
+        reply, chat_id = None, None
+    if reply and chat_id:
+        telegram_bot.send(chat_id, reply)
+    return jsonify({"ok": True})
+
+
+@app.route("/backup")
+def backup_now():
+    """Manual snapshot push (the scheduler also runs this on a cadence)."""
+    return jsonify(store.backup_db())
 
 
 @app.route("/test-alert")
@@ -343,14 +398,28 @@ def test_alert():
     })
 
 
+def _backup_job():
+    try:
+        res = store.backup_db()
+        if res.get("ok"):
+            print("backup: snapshot pushed,", res["bytes"], "bytes (gz)")
+        elif res.get("reason") != "backup not configured":
+            print("backup failed:", res)
+    except Exception as e:
+        print("backup error:", e)
+
+
 _scheduler = BackgroundScheduler(daemon=True)
 _scheduler.add_job(_job, "interval", minutes=C.RUN_INTERVAL_MIN)
 _scheduler.add_job(_scan_job, "interval", minutes=max(30, C.RUN_INTERVAL_MIN * 2))
 _scheduler.add_job(_watchdog, "interval", minutes=5)
+_scheduler.add_job(_backup_job, "interval", hours=C.BACKUP_EVERY_HOURS)
 
 _job()
 _scan_job()
 _scheduler.start()
+# bot webhook registration is a network call — never block boot on it
+threading.Thread(target=telegram_bot.register_webhook, daemon=True).start()
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", "10000")))
