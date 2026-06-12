@@ -25,6 +25,7 @@ import scorecard
 import signals as S
 import store
 import telegram_bot
+import venues
 import watchlist as wl
 import whales
 from notifier import notify
@@ -43,11 +44,13 @@ _last_scan = {}
 # Persistence + live liquidation stream, handed to the engine.
 store.init_db()
 liq_monitor = liquidations.LiquidationMonitor(
-    C.SYMBOLS, C.BYBIT_WS_CANDIDATES, C.LIQ_MAX_AGE_SEC, C.LIQ_BIN_SEC
+    C.SYMBOLS, venues.liq_specs(C.SYMBOLS), C.LIQ_MAX_AGE_SEC, C.LIQ_BIN_SEC
 )
 liq_monitor.start()
 engine.LIQ_MONITOR = liq_monitor
-whale_tape = whales.WhaleTapeMonitor(C.WHALE_SYMBOLS, C.BYBIT_WS_CANDIDATES, C.WHALE_WINDOW_SEC)
+whale_tape = whales.WhaleTapeMonitor(C.WHALE_SYMBOLS,
+                                     venues.tape_specs(C.WHALE_SYMBOLS),
+                                     C.WHALE_WINDOW_SEC)
 whale_tape.start()
 engine.WHALE_TAPE = whale_tape
 _ws_down_since = [None]
@@ -175,6 +178,10 @@ def _watchdog():
                 _tape_down_since[0] = time.time()
         else:
             _tape_down_since[0] = None
+        try:    # webhook self-heal: re-register if Telegram lost/never had it
+            telegram_bot.ensure_webhook()
+        except Exception as e:
+            print("webhook ensure error:", e)
     except Exception as e:
         print("watchdog error:", e)
 
@@ -224,7 +231,9 @@ def health():
                     "tape_connected": whale_tape.healthy(), "stale": stale,
                     "ws_silent_sec": _silent(liq_monitor),
                     "tape_silent_sec": _silent(whale_tape),
+                    "ws_venue": liq_monitor.active_venue,
                     "ws_url": liq_monitor.active_url,
+                    "tape_venue": whale_tape.active_venue,
                     "tape_url": whale_tape.active_url})
 
 
@@ -379,6 +388,24 @@ def telegram_webhook():
     return jsonify({"ok": True})
 
 
+@app.route("/telegram-status")
+def telegram_status():
+    """Self-diagnosis for the bot: where exactly the chain breaks.
+    Auth-gated like the rest of the dashboard."""
+    exp = telegram_bot.expected_webhook_url()
+    info = telegram_bot.webhook_info()
+    last = dict(telegram_bot.LAST_UPDATE) or None
+    return jsonify({
+        "token_configured": bool(C.TELEGRAM_TOKEN),
+        "chat_id_configured": bool(C.TELEGRAM_CHAT_ID),
+        "webhook_base": C.TELEGRAM_WEBHOOK_BASE or None,
+        "expected_url": exp,
+        "telegram": info,
+        "last_update_seen": last,
+        "hint": telegram_bot.status_hint(info, exp, last),
+    })
+
+
 @app.route("/backup")
 def backup_now():
     """Manual snapshot push (the scheduler also runs this on a cadence)."""
@@ -418,8 +445,20 @@ _scheduler.add_job(_backup_job, "interval", hours=C.BACKUP_EVERY_HOURS)
 _job()
 _scan_job()
 _scheduler.start()
-# bot webhook registration is a network call — never block boot on it
-threading.Thread(target=telegram_bot.register_webhook, daemon=True).start()
+# bot webhook registration is a network call — never block boot on it, and
+# retry with backoff (a one-shot attempt dies to any cold-start network blip;
+# the 5-min watchdog keeps it healed after that)
+def _register_bot():
+    for wait in (0, 10, 30, 60, 120):
+        time.sleep(wait)
+        try:
+            if telegram_bot.ensure_webhook():
+                return
+        except Exception as e:
+            print("telegram webhook retry error:", e)
+
+
+threading.Thread(target=_register_bot, daemon=True).start()
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", "10000")))
