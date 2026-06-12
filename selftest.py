@@ -453,6 +453,41 @@ if __name__ == "__main__":
     assert "→ PEPE" in txt and "/watch" in txt, "/candidates must mark qualifiers"
     print("candidates-alerts  once+cooldown ✓  auto-add behind flag ✓")
 
+    # ---- v6: venue adapters (event normalization, pure) ----
+    import venues as V
+    # bybit passthrough: S=Buy already means "a long was liquidated"
+    bb = V.bybit("liq", ["BTCUSDT"])
+    ev = bb["parse"]({"topic": "allLiquidation.BTCUSDT",
+                      "data": [{"T": 1, "s": "BTCUSDT", "S": "Buy", "v": "2", "p": "50000"}]})
+    assert ev == [(1, "BTCUSDT", "Buy", 100000.0)]
+    assert bb["alive"]({"op": "pong"}) and not bb["alive"]({"op": "subscribe", "success": True}), \
+        "bybit pong proves delivery; a bare subscribe ack must not"
+    # kraken: liquidations arrive as trades; a forced SELL closes a long -> "Buy"
+    kr = V.kraken("liq", ["BTCUSDT", "SOLUSDT"])
+    assert "PF_XBTUSD" in kr["subscribe"] and "PF_SOLUSD" in kr["subscribe"], \
+        "BTC must map to Kraken's XBT product"
+    ev = kr["parse"]({"feed": "trade", "product_id": "PF_XBTUSD", "time": 9,
+                      "side": "sell", "type": "liquidation", "qty": 1.5, "price": 60000})
+    assert ev == [(9, "BTCUSDT", "Buy", 90000.0)], "kraken side must invert into repo convention"
+    assert kr["parse"]({"feed": "trade", "product_id": "PF_XBTUSD", "time": 9,
+                        "side": "sell", "type": "fill", "qty": 1, "price": 1}) == [], \
+        "plain fills must not count as liquidations"
+    kt = V.kraken("trade", ["BTCUSDT"])
+    snap = kt["parse"]({"feed": "trade_snapshot", "trades": [
+        {"product_id": "PF_XBTUSD", "time": 5, "side": "buy", "type": "fill",
+         "qty": 2, "price": 100}]})
+    assert snap == [(5, "Buy", 200.0)], "trade_snapshot must warm the tape"
+    # binance: forced SELL = long died; the connect ack must NOT count as alive
+    bn = V.binance("liq", ["BTCUSDT"])
+    ev = bn["parse"]({"e": "forceOrder", "o": {"s": "BTCUSDT", "S": "SELL", "q": "2",
+                                               "p": "100", "ap": "101", "T": 7}})
+    assert ev == [(7, "BTCUSDT", "Buy", 202.0)]
+    assert not bn["alive"]({"result": None, "id": 1}) and bn["alive"]({"e": "aggTrade"}), \
+        "geo-blocked edges ack then go silent — acks can't prove delivery"
+    lm2 = LQ.LiquidationMonitor(["BTCUSDT"], "", 5400, 900)
+    assert lm2.active_venue == "bybit", "plain-URL construction must still work"
+    print("venues  bybit/kraken/binance normalization + alive gating ✓")
+
     # ---- v6: backup config gating (no network — just the guard rails) ----
     assert ST.restore_db().get("reason") == "backup not configured", \
         "unconfigured restore must no-op"

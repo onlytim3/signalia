@@ -1,9 +1,11 @@
 """
-Signalia — live liquidation monitor (Bybit All Liquidation WS).
+Signalia — live liquidation monitor (multi-venue WS).
 
-Stream: wss://stream.bybit.com/v5/public/linear
-Topic:  allLiquidation.{symbol}   (push every 500ms)
-Fields: T=ts(ms), s=symbol, S=side (Buy => a LONG was liquidated), v=size, p=price
+Home venue is Bybit (allLiquidation.{symbol}, already in the repo's
+"Buy = a LONG was liquidated" convention). Bybit's WS edges go dark from some
+hosts' networks, so the monitor takes a list of venue specs (venues.py),
+rotates when a connection proves undeliverable, and remembers the venue that
+last delivered so restarts reconnect straight to the winner.
 
 Runs in a background thread, keeps a rolling in-memory buffer of liquidation
 events, and exposes aggregates the engine reads on its scheduled run.
@@ -18,73 +20,116 @@ from collections import deque
 
 import websocket  # websocket-client
 
+import store
+import venues
+
 websocket.setdefaulttimeout(15)   # connect/handshake can't hang a reconnect loop
 
 
 class LiquidationMonitor:
-    def __init__(self, symbols, ws_url, max_age_sec, bin_sec):
+    KIND = "liq"
+    # a healthy connection refreshes last_msg_ts via data, app pongs, or
+    # protocol pongs every ~20s — so >90s of total silence means the feed is
+    # dead-but-open (or the subscribe never took) and we reconnect
+    SILENT_SEC = 90
+
+    def __init__(self, symbols, ws_source, max_age_sec, bin_sec):
         self.symbols = symbols
-        # accept one URL or a candidate list; rotate on totally-silent cycles
-        self.urls = [ws_url] if isinstance(ws_url, str) else list(ws_url)
-        self._url_i = 0
-        self._got_frame = False
+        # ws_source: one URL, a list of URLs (treated as Bybit mirrors), or a
+        # list of venue specs — see venues.py
+        self.specs = self._normalize(ws_source)
+        self._spec_i = 0
+        self._got_frame = False        # this connection proved real delivery
         self.max_age = max_age_sec
         self.bin_sec = bin_sec
-        self.events = deque()          # (ts_ms, side, notional_usd)
+        self.events = deque()          # (ts_ms, symbol, side, notional_usd)
         self.lock = threading.Lock()
         self.connected = False
         self.started_at = None
         self.last_msg_ts = None        # any server traffic (incl. pongs/acks)
         self._ws = None
+        self._recall_winner()
 
-    # a healthy socket answers our 20s pings, so >90s of total silence means
-    # the connection is dead-but-open (or the subscribe never took) — reconnect
-    SILENT_SEC = 90
+    # ------------------------- venue spec plumbing --------------------------
+    def _normalize(self, src):
+        if isinstance(src, str):
+            return [venues.bybit(self.KIND, self.symbols, src)]
+        return [venues.bybit(self.KIND, self.symbols, u) if isinstance(u, str)
+                else u for u in src]
+
+    @property
+    def spec(self):
+        return self.specs[self._spec_i % len(self.specs)]
+
+    @property
+    def active_url(self):
+        return self.spec["url"]
+
+    @property
+    def active_venue(self):
+        return self.spec["name"]
+
+    def _recall_winner(self):
+        """Start the hunt at whichever venue delivered last time."""
+        try:
+            saved = store.get_meta(f"ws_winner_{self.KIND}")
+        except Exception:
+            return
+        for i, s in enumerate(self.specs):
+            if saved == f"{s['name']}|{s['url']}":
+                self.specs.insert(0, self.specs.pop(i))
+                return
+
+    def _save_winner(self):
+        try:
+            store.set_meta(f"ws_winner_{self.KIND}",
+                           f"{self.spec['name']}|{self.spec['url']}")
+        except Exception:
+            pass
 
     # -------------------------- WS callbacks --------------------------------
     def _on_open(self, ws):
         self.connected = True
         self.last_msg_ts = time.time()
-        args = [f"allLiquidation.{s}" for s in self.symbols]
-        ws.send(json.dumps({"op": "subscribe", "args": args}))
-        print("liq ws: subscribe sent", args)
+        ws.send(self.spec["subscribe"])
+        print(f"{self.KIND} ws: subscribe sent via {self.active_venue} "
+              f"({self.active_url})")
 
     def _on_message(self, ws, msg):
         self.last_msg_ts = time.time()
-        self._got_frame = True
         try:
             m = json.loads(msg)
         except Exception:
             return
-        if m.get("op") == "subscribe" and not m.get("success", True):
-            # bad endpoint/topic would otherwise look "connected" with 0 events
-            print("liq ws: subscribe REJECTED:", m.get("ret_msg"), "— reconnecting")
+        spec = self.spec
+        if spec["rejected"](m):
+            print(f"{self.KIND} ws: subscribe REJECTED by {self.active_venue}: "
+                  f"{str(m)[:160]} — rotating")
+            self._got_frame = False    # a rejection is not delivery
             ws.close()
             return
-        if m.get("op") in ("pong", "ping") or m.get("ret_msg") == "pong":
+        # "alive" frames (data or app-level pongs) prove the subscription is
+        # really delivering — a mere connect ack doesn't (geo-blocked edges
+        # often ack and then go silent forever)
+        if not self._got_frame and spec["alive"](m):
+            self._got_frame = True
+            self._save_winner()
+        events = spec["parse"](m)
+        if not events:
             return
-        data = m.get("data")
-        if not data:
-            return
-        items = data if isinstance(data, list) else [data]
         with self.lock:
-            for it in items:
-                try:
-                    ts = int(it["T"])
-                    sym = it.get("s", "")               # keep the symbol — per-asset reads
-                    side = it["S"]                      # Buy => long liquidated
-                    notional = float(it["v"]) * float(it["p"])
-                    self.events.append((ts, sym, side, notional))
-                except Exception:
-                    continue
+            self.events.extend(events)
             self._prune()
+
+    def _on_pong(self, ws, *a):
+        self.last_msg_ts = time.time()     # protocol pongs count as traffic
 
     def _on_close(self, ws, *a):
         self.connected = False
 
     def _on_error(self, ws, err):
         self.connected = False
-        print("liq ws error:", err)
+        print(f"{self.KIND} ws error ({self.active_venue}):", err)
 
     # ------------------------------ plumbing --------------------------------
     def _prune(self):
@@ -102,13 +147,17 @@ class LiquidationMonitor:
             # forever, and a swallowed send error must never mask a dead feed
             silent = time.time() - self.last_msg_ts if self.last_msg_ts else 0
             if silent > self.SILENT_SEC:
-                print(f"liq ws: no traffic for {silent:.0f}s — forcing reconnect")
+                print(f"{self.KIND} ws: no traffic for {silent:.0f}s "
+                      f"({self.active_venue}) — forcing reconnect")
                 self._force_close(ws)
                 continue
+            payload = self.spec.get("ping")
+            if not payload:
+                continue               # venue keeps fresh via protocol pongs
             try:
-                ws.send(json.dumps({"op": "ping"}))
+                ws.send(payload)
             except Exception as e:
-                print("liq ws: ping send failed:", e, "— forcing reconnect")
+                print(f"{self.KIND} ws: ping send failed:", e, "— forcing reconnect")
                 self._force_close(ws)
 
     def _force_close(self, ws):
@@ -118,29 +167,27 @@ class LiquidationMonitor:
         except Exception:
             pass
 
-    @property
-    def active_url(self):
-        return self.urls[self._url_i % len(self.urls)] if self.urls else None
-
     def _run(self):
         while True:
-            url = self.active_url
+            spec = self.spec
             self._got_frame = False
             try:
                 self._ws = websocket.WebSocketApp(
-                    url,
+                    spec["url"],
                     on_open=self._on_open,
                     on_message=self._on_message,
                     on_close=self._on_close,
                     on_error=self._on_error,
+                    on_pong=self._on_pong,
                 )
                 self._ws.run_forever(ping_interval=20, ping_timeout=10)
             except Exception as e:
-                print("liq ws run error:", e)
+                print(f"{self.KIND} ws run error:", e)
             self.connected = False
-            if not self._got_frame and len(self.urls) > 1:
-                self._url_i += 1        # endpoint never sent a frame — rotate
-                print(f"liq ws: {url} delivered nothing — rotating to {self.active_url}")
+            if not self._got_frame and len(self.specs) > 1:
+                self._spec_i += 1       # venue never delivered — hunt on
+                print(f"{self.KIND} ws: {spec['name']} ({spec['url']}) delivered "
+                      f"nothing — rotating to {self.active_venue}")
             time.sleep(5)               # reconnect backoff
 
     def start(self):
@@ -150,9 +197,9 @@ class LiquidationMonitor:
 
     # ------------------------------ readers ---------------------------------
     def healthy(self):
-        """Connected AND actually receiving traffic. Pongs refresh last_msg_ts
-        every 20s on a live socket, so prolonged silence = dead feed even if
-        the TCP connection still looks open."""
+        """Connected AND actually receiving traffic. Data/pong frames refresh
+        last_msg_ts every ~20s on a live socket, so prolonged silence = dead
+        feed even if the TCP connection still looks open."""
         return (self.connected and self.last_msg_ts is not None
                 and (time.time() - self.last_msg_ts) < self.SILENT_SEC + 30)
 

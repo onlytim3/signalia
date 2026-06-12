@@ -25,6 +25,7 @@ import scorecard
 import signals as S
 import store
 import telegram_bot
+import venues
 import watchlist as wl
 import whales
 from notifier import notify
@@ -43,11 +44,13 @@ _last_scan = {}
 # Persistence + live liquidation stream, handed to the engine.
 store.init_db()
 liq_monitor = liquidations.LiquidationMonitor(
-    C.SYMBOLS, C.BYBIT_WS_CANDIDATES, C.LIQ_MAX_AGE_SEC, C.LIQ_BIN_SEC
+    C.SYMBOLS, venues.liq_specs(C.SYMBOLS), C.LIQ_MAX_AGE_SEC, C.LIQ_BIN_SEC
 )
 liq_monitor.start()
 engine.LIQ_MONITOR = liq_monitor
-whale_tape = whales.WhaleTapeMonitor(C.WHALE_SYMBOLS, C.BYBIT_WS_CANDIDATES, C.WHALE_WINDOW_SEC)
+whale_tape = whales.WhaleTapeMonitor(C.WHALE_SYMBOLS,
+                                     venues.tape_specs(C.WHALE_SYMBOLS),
+                                     C.WHALE_WINDOW_SEC)
 whale_tape.start()
 engine.WHALE_TAPE = whale_tape
 _ws_down_since = [None]
@@ -228,7 +231,9 @@ def health():
                     "tape_connected": whale_tape.healthy(), "stale": stale,
                     "ws_silent_sec": _silent(liq_monitor),
                     "tape_silent_sec": _silent(whale_tape),
+                    "ws_venue": liq_monitor.active_venue,
                     "ws_url": liq_monitor.active_url,
+                    "tape_venue": whale_tape.active_venue,
                     "tape_url": whale_tape.active_url})
 
 
