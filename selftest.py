@@ -381,6 +381,29 @@ if __name__ == "__main__":
     assert cid == "999" and "target 30%" in r, "owner chat must get the status"
     print("telegram-bot  /status·/why·routing·auth ✓  binding-gate=confirmation-cap")
 
+    # ---- v6: bot self-diagnosis (pure: hint chain + last-update memory) ----
+    assert TB.LAST_UPDATE.get("owner") is True and TB.LAST_UPDATE["chat_id"] == "999", \
+        "webhook must remember the last update it saw"
+    TB.handle_update({"message": {"chat": {"id": 12345}, "text": "/status"}}, ctx)
+    assert TB.LAST_UPDATE["owner"] is False, "stranger update must be recorded as such"
+    assert "TELEGRAM_TOKEN" in TB.status_hint({}, None, None), \
+        "no token must be the first break called out"
+    TB.C.TELEGRAM_TOKEN = "test-token"
+    hint = TB.status_hint({"url": "https://x/telegram-webhook"},
+                          "https://x/telegram-webhook", dict(TB.LAST_UPDATE))
+    assert "TELEGRAM_CHAT_ID" in hint and "12345" in hint, \
+        "chat-id mismatch must name the offending chat"
+    TB.C.TELEGRAM_WEBHOOK_BASE = ""
+    assert TB.expected_webhook_url() is None and "can't register" in TB.status_hint({}, None, None)
+    TB.C.TELEGRAM_WEBHOOK_BASE = "https://x"
+    assert TB.expected_webhook_url() == "https://x/telegram-webhook"
+    assert "instead of" in TB.status_hint({"url": ""}, "https://x/telegram-webhook", None), \
+        "unregistered webhook must be called out"
+    assert "healthy" in TB.status_hint({"url": "https://x/telegram-webhook"},
+                                       "https://x/telegram-webhook",
+                                       {"owner": True, "chat_id": "999"})
+    print("telegram-status  hint chain: no-base→unregistered→chat-mismatch→healthy ✓")
+
     # ---- v6: scan-driven watchlist candidates ----
     import candidates as CD
     now = 1_000_000.0

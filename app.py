@@ -175,6 +175,10 @@ def _watchdog():
                 _tape_down_since[0] = time.time()
         else:
             _tape_down_since[0] = None
+        try:    # webhook self-heal: re-register if Telegram lost/never had it
+            telegram_bot.ensure_webhook()
+        except Exception as e:
+            print("webhook ensure error:", e)
     except Exception as e:
         print("watchdog error:", e)
 
@@ -379,6 +383,24 @@ def telegram_webhook():
     return jsonify({"ok": True})
 
 
+@app.route("/telegram-status")
+def telegram_status():
+    """Self-diagnosis for the bot: where exactly the chain breaks.
+    Auth-gated like the rest of the dashboard."""
+    exp = telegram_bot.expected_webhook_url()
+    info = telegram_bot.webhook_info()
+    last = dict(telegram_bot.LAST_UPDATE) or None
+    return jsonify({
+        "token_configured": bool(C.TELEGRAM_TOKEN),
+        "chat_id_configured": bool(C.TELEGRAM_CHAT_ID),
+        "webhook_base": C.TELEGRAM_WEBHOOK_BASE or None,
+        "expected_url": exp,
+        "telegram": info,
+        "last_update_seen": last,
+        "hint": telegram_bot.status_hint(info, exp, last),
+    })
+
+
 @app.route("/backup")
 def backup_now():
     """Manual snapshot push (the scheduler also runs this on a cadence)."""
@@ -418,8 +440,20 @@ _scheduler.add_job(_backup_job, "interval", hours=C.BACKUP_EVERY_HOURS)
 _job()
 _scan_job()
 _scheduler.start()
-# bot webhook registration is a network call — never block boot on it
-threading.Thread(target=telegram_bot.register_webhook, daemon=True).start()
+# bot webhook registration is a network call — never block boot on it, and
+# retry with backoff (a one-shot attempt dies to any cold-start network blip;
+# the 5-min watchdog keeps it healed after that)
+def _register_bot():
+    for wait in (0, 10, 30, 60, 120):
+        time.sleep(wait)
+        try:
+            if telegram_bot.ensure_webhook():
+                return
+        except Exception as e:
+            print("telegram webhook retry error:", e)
+
+
+threading.Thread(target=_register_bot, daemon=True).start()
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", "10000")))

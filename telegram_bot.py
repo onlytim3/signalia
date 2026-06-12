@@ -37,12 +37,74 @@ HELP = """Signalia — the ladder in your pocket
 
 
 # ------------------------------ plumbing ---------------------------------------
+LAST_UPDATE = {}    # debug surface: what the webhook last saw and what it did
+
+
 def webhook_secret():
     """Shared secret for Telegram's X-Telegram-Bot-Api-Secret-Token header.
     Derived from the bot token (itself a secret) — stable across restarts,
     no extra env var to manage."""
     return hashlib.sha256(("signalia-webhook:" + C.TELEGRAM_TOKEN)
                           .encode()).hexdigest()[:48]
+
+
+def expected_webhook_url():
+    if not C.TELEGRAM_WEBHOOK_BASE:
+        return None
+    return C.TELEGRAM_WEBHOOK_BASE.rstrip("/") + "/telegram-webhook"
+
+
+def webhook_info():
+    """Telegram's view of our webhook: registered URL, queue, last error."""
+    if not C.TELEGRAM_TOKEN:
+        return {"error": "no TELEGRAM_TOKEN configured"}
+    try:
+        r = requests.get(
+            f"https://api.telegram.org/bot{C.TELEGRAM_TOKEN}/getWebhookInfo",
+            timeout=15).json()
+        info = r.get("result") or {}
+        return {k: info.get(k) for k in
+                ("url", "pending_update_count", "last_error_date",
+                 "last_error_message", "ip_address")}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def ensure_webhook():
+    """Register only when Telegram's registered URL differs from ours —
+    cheap enough for the watchdog, so registration self-heals forever
+    instead of riding one fragile boot-time attempt."""
+    exp = expected_webhook_url()
+    if not (C.TELEGRAM_TOKEN and exp):
+        return False
+    if webhook_info().get("url") == exp:
+        return True
+    return register_webhook()
+
+
+def status_hint(info, expected_url, last_update):
+    """One sentence pointing at the exact break in the chain (pure)."""
+    if not C.TELEGRAM_TOKEN:
+        return "TELEGRAM_TOKEN is not set — the bot doesn't exist to Telegram"
+    if not expected_url:
+        return ("no public base URL — RENDER_EXTERNAL_URL missing and "
+                "TELEGRAM_WEBHOOK_BASE unset, so the webhook can't register")
+    if info.get("error"):
+        return f"can't reach Telegram's API: {info['error']}"
+    if info.get("url") != expected_url:
+        return (f"webhook registered to '{info.get('url') or '(nothing)'}' "
+                f"instead of '{expected_url}' — the watchdog re-registers "
+                "within 5 min; check Render logs for 'telegram webhook:'")
+    if info.get("last_error_message"):
+        return f"Telegram reports delivery errors: {info['last_error_message']}"
+    if not last_update:
+        return ("webhook registered and clean — no message has arrived yet; "
+                "text the bot /help and re-check")
+    if not last_update.get("owner"):
+        return (f"messages arrive from chat {last_update.get('chat_id')} but "
+                f"TELEGRAM_CHAT_ID={C.TELEGRAM_CHAT_ID or '(unset)'} — the bot "
+                "answers only that id; update the env var to your chat")
+    return "healthy — last command was answered"
 
 
 def register_webhook():
@@ -252,9 +314,12 @@ def handle_update(update, ctx):
     Silence for any chat that isn't the configured owner."""
     msg = (update or {}).get("message") or {}
     chat_id = str(((msg.get("chat") or {}).get("id")) or "")
-    if not chat_id or chat_id != str(C.TELEGRAM_CHAT_ID):
-        return None, None
     text = (msg.get("text") or "").strip()
+    owner = bool(chat_id) and chat_id == str(C.TELEGRAM_CHAT_ID)
+    LAST_UPDATE.update({"ts": time.time(), "chat_id": chat_id or "?",
+                        "text": text[:64], "owner": owner})
+    if not owner:
+        return None, None
     if not text.startswith("/"):
         return "I speak commands — /help lists them", chat_id
     return route(text, ctx), chat_id
